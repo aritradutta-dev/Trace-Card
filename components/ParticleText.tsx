@@ -286,25 +286,26 @@ export default function ParticleText({
         return [x + (Math.random() - 0.5) * 80, -Math.random() * H * 0.4 - 40];
       }
 
-      // Enter from across the whole surrounding background (screen edges & deep field)
-      const roll = Math.random();
-      if (roll < 0.35) {
-        // High above into hero, or deep below into workspace
+      // Organic radial nebula: smooth 360° celestial distribution (NO rectangle or box perimeter)
+      const angle = Math.random() * Math.PI * 2;
+      const maxRadius = Math.max(W * 0.5, H * 0.7);
+      const radius = 60 + Math.pow(Math.random(), 0.7) * maxRadius;
+
+      // 65% disperse radially outward from their target letters
+      // 35% float from the wider ambient cosmic background
+      if (Math.random() < 0.65) {
         return [
-          Math.random() * W,
-          Math.random() < 0.5 ? -Math.random() * 160 : H + Math.random() * 160,
-        ];
-      } else if (roll < 0.7) {
-        // Wide left and right offscreen flanks
-        return [
-          Math.random() < 0.5 ? -Math.random() * 160 : W + Math.random() * 160,
-          Math.random() * H,
+          x + Math.cos(angle) * radius,
+          y + Math.sin(angle) * radius,
         ];
       } else {
-        // Deep background celestial dispersion
-        const angle = Math.random() * Math.PI * 2;
-        const dist = 140 + Math.random() * Math.max(W * 0.45, H * 0.65);
-        return [x + Math.cos(angle) * dist, y + Math.sin(angle) * dist];
+        const cx = W / 2;
+        const cy = H / 2;
+        const wideRadius = 80 + Math.pow(Math.random(), 0.65) * (maxRadius * 1.25);
+        return [
+          cx + Math.cos(angle) * wideRadius,
+          cy + Math.sin(angle) * wideRadius,
+        ];
       }
     }
 
@@ -464,7 +465,8 @@ export default function ParticleText({
           ctx.fillStyle = palette[p.g];
         }
 
-        ctx.globalAlpha = 0.6 + 0.4 * (1 - sp * 0.35);
+        const entranceFade = reduce ? 1 : Math.min(1, t / 1.1);
+        ctx.globalAlpha = entranceFade * (0.6 + 0.4 * (1 - sp * 0.35));
         const s = size * p.s * (1 + sp * 0.25);
 
         if (L.shape === "circle") {
