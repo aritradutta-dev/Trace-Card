@@ -6,6 +6,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import DotGridBackground from "@/components/DotGridBackground";
 import NeuralBrainDecoration from "@/components/NeuralBrainDecoration";
+import SmoothCursor from "@/components/SmoothCursor";
 import {
   ArrowDownToLine,
   ArrowLeft,
@@ -804,6 +805,7 @@ export default function TraceCardApp() {
 
   return (
     <div className="site-root" data-theme={theme}>
+      <SmoothCursor />
       <DotGridBackground />
       <header className="topbar shell">
         <a className="brand" href="#top" aria-label="TraceCard home"><IconMark /><span>Trace<span>Card</span></span></a>
