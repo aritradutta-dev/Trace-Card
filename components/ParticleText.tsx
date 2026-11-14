@@ -99,14 +99,14 @@ export default function ParticleText({
   color2 = "#FF654C",
   gradient = true,
   background = "transparent",
-  density = 1,
-  particleSize = 2.2,
+  density = 1.25,
+  particleSize = 3.2,
   shape = "square",
   entrance = "noise",
-  duration = 2.4,
+  duration = 2.0,
   interaction = "repel",
-  radius = 90,
-  force = 6,
+  radius = 120,
+  force = 8,
   idle = true,
   replay = "none",
   style,
@@ -163,15 +163,14 @@ export default function ParticleText({
     let alive = true;
     let sizeRetryRaf = 0;
     let sizeRetryCount = 0;
-    let fontReadyTimeout = 0;
     let P: Particle[] = [];
     let colorKey = "";
     let palette: string[] = [];
     const mouse = { x: -9999, y: -9999, down: false };
     let t0 = performance.now();
 
-    const fam = (font && font.fontFamily) || "var(--font-display), 'Manrope', 'DM Sans', sans-serif";
-    const weight = (font && font.fontWeight) || 800;
+    const fam = (font && font.fontFamily) || "'Manrope', 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    const weight = (font && font.fontWeight) || 900;
     const italic = font && font.fontStyle === "italic" ? "italic " : "";
     const lines = String(text || "TRACECARD").split("\n");
 
@@ -185,16 +184,16 @@ export default function ParticleText({
     }
 
     function resolveSize() {
-      const rect = box?.getBoundingClientRect();
+      const rect = box.getBoundingClientRect();
       const s = style || {};
-      const fromStyleW = readAxis(s.width, 900);
-      const fromStyleH = readAxis(s.height, 220);
-      const cw = box?.clientWidth || 0;
-      const ch = box?.clientHeight || 0;
+      const fromStyleW = readAxis(s.width, 1100);
+      const fromStyleH = readAxis(s.height, 280);
+      const cw = box.clientWidth || 0;
+      const ch = box.clientHeight || 0;
       const rw = rect?.width || 0;
       const rh = rect?.height || 0;
-      const width = Math.max(0, cw || rw || fromStyleW || 900);
-      const height = Math.max(0, ch || rh || fromStyleH || 220);
+      const width = Math.max(0, cw || rw || fromStyleW || 1100);
+      const height = Math.max(0, ch || rh || fromStyleH || 280);
       return { width, height };
     }
 
@@ -205,10 +204,12 @@ export default function ParticleText({
       const o = off.getContext("2d");
       if (!o) return [];
 
-      let fs = H / (lines.length * 1.15);
+      let fs = H / (lines.length * 1.05);
       o.font = `${italic}${weight} ${fs}px ${fam}`;
       const widest = Math.max(...lines.map((l) => o.measureText(l).width), 1);
-      fs = Math.min(fs, (fs * W * 0.94) / widest);
+      if (widest > 0) {
+        fs = Math.min(fs, (fs * W * 0.96) / widest);
+      }
       o.font = `${italic}${weight} ${fs}px ${fam}`;
       o.textAlign = "center";
       o.textBaseline = "middle";
@@ -237,8 +238,8 @@ export default function ParticleText({
         }
       }
       const area = n * 4;
-      const budget = (W < 600 ? 3200 : 8000) * density;
-      const gap = Math.max(1.6, Math.sqrt(area / Math.max(1, budget)));
+      const budget = (W < 600 ? 3600 : 8500) * density;
+      const gap = Math.max(2.0, Math.sqrt(area / Math.max(1, budget)));
       const pts: [number, number][] = [];
 
       for (let y = gap / 2; y < off.height; y += gap) {
@@ -406,7 +407,6 @@ export default function ParticleText({
       }
     };
 
-    const fontStr = `${italic}${weight} 64px ${fam}`;
     let initialStarted = false;
     const startInitial = () => {
       if (initialStarted || !alive) return;
@@ -414,11 +414,14 @@ export default function ParticleText({
       go();
     };
 
-    fontReadyTimeout = window.setTimeout(startInitial, 800);
-    if (document.fonts?.load) {
-      document.fonts.load(fontStr).then(startInitial).catch(startInitial);
-    } else {
-      startInitial();
+    startInitial();
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(() => {
+        if (alive) {
+          build();
+          frame();
+        }
+      }).catch(() => {});
     }
 
     let rt = 0;
@@ -436,6 +439,7 @@ export default function ParticleText({
       if (visible) {
         if (replay === "scroll" && !hasScrolledIntoView) {
           hasScrolledIntoView = true;
+          build();
           t0 = performance.now();
         }
         if (!raf) frame();
@@ -444,7 +448,7 @@ export default function ParticleText({
           hasScrolledIntoView = false;
         }
       }
-    }, { threshold: 0.15 });
+    }, { threshold: 0.1 });
     io.observe(box);
 
     const move = (e: PointerEvent) => {
@@ -473,7 +477,6 @@ export default function ParticleText({
       redraw.current = () => {};
       cancelAnimationFrame(raf);
       cancelAnimationFrame(sizeRetryRaf);
-      clearTimeout(fontReadyTimeout);
       clearTimeout(rt);
       ro.disconnect();
       io.disconnect();

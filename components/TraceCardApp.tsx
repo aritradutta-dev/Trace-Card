@@ -833,38 +833,25 @@ export default function TraceCardApp() {
           <div className="hero-bottom"><span>TRACE / CAUSE / FIX</span><span>READ THE SIGNAL. KEEP THE CONTEXT.</span><span>SCROLL TO WORKSPACE <ArrowDownToLine size={12} /></span></div>
         </section>
 
-        <section className="particle-showcase-section" aria-label="TraceCard interactive particle banner">
-          <div className="particle-showcase-inner">
-            <div className="particle-showcase-badge">
-              <span className="particle-showcase-dot" />
-              <span>SCROLL-REACTIVE PARTICLE MATRIX</span>
-            </div>
-            <div className="particle-text-wrapper">
-              <ParticleText
-                text="TRACECARD"
-                color={theme === "dark" ? "#FFFFFF" : "#1A1A1A"}
-                color2={theme === "dark" ? "#FF654C" : "#D94432"}
-                gradient={true}
-                density={1.25}
-                particleSize={2.4}
-                shape="square"
-                entrance="noise"
-                duration={2.2}
-                interaction="repel"
-                radius={110}
-                force={7}
-                idle={true}
-                replay="scroll"
-                style={{ height: "100%", width: "100%" }}
-              />
-            </div>
-            <div className="particle-showcase-meta">
-              <span>00 // TRACECARD CORE</span>
-              <span>SCROLL TO CONVERGE · INTERACTIVE PARTICLE CANVAS</span>
-              <span>HOVER / DRAG TO REPEL</span>
-            </div>
-          </div>
-        </section>
+        <div className="big-particle-brand-banner" aria-label="TRACECARD animated particles">
+          <ParticleText
+            text="TRACECARD"
+            color={theme === "dark" ? "#FFFFFF" : "#1A1A1A"}
+            color2={theme === "dark" ? "#FF654C" : "#D94432"}
+            gradient={true}
+            density={1.3}
+            particleSize={3.4}
+            shape="square"
+            entrance="noise"
+            duration={2.0}
+            interaction="repel"
+            radius={140}
+            force={8}
+            idle={true}
+            replay="scroll"
+            style={{ width: "100%", height: "100%" }}
+          />
+        </div>
 
         <section className="workspace" id="workspace" ref={heroInputRef} aria-labelledby="workspace-title">
           <div className="workspace-heading"><div><div className="section-kicker"><span>01</span> START WITH THE ERROR</div><h2 id="workspace-title">Bring the broken thing.</h2><p>Paste a stack trace or add a screenshot. We’ll make the noise make sense.</p></div><div className="workspace-local"><span className="local-pulse" /> LOCAL MASKING ON</div></div>
