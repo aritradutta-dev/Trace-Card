@@ -716,7 +716,7 @@ body { font-size: 16px; }
 }
 
 /* Decorative local adaptation of the supplied Framer NeuralBrain model. */
-.entry-hero.minimaze-hero { position: relative; isolation: isolate; }
+.entry-hero.minimaze-hero { position: relative; isolation: isolate; z-index: 5; }
 .neural-brain-decoration {
   position: absolute;
   z-index: -1;
@@ -740,7 +740,10 @@ body { font-size: 16px; }
   letter-spacing: .8px;
   opacity: .85;
 }
-.entry-copy, .gallery-heading, .trace-gallery, .hero-bottom { position: relative; z-index: 1; }
+.entry-copy, .gallery-heading, .trace-gallery, .hero-bottom { position: relative; z-index: 2; }
+.trace-gallery { position: relative; z-index: 2; }
+.gallery-tile { position: relative; z-index: 2; }
+.gallery-tile:hover { z-index: 3; }
 
 @media (max-width: 900px) {
   .neural-brain-decoration {
@@ -914,6 +917,7 @@ body { font-size: 16px; }
    ========================================================================== */
 .big-particle-brand-banner {
   position: relative;
+  z-index: 1;
   width: 100%;
   height: clamp(210px, 25vw, 350px);
   margin: 32px 0 36px;
@@ -923,6 +927,14 @@ body { font-size: 16px; }
   background: radial-gradient(ellipse 65% 55% at 50% 50%, rgba(184, 217, 145, 0.075) 0%, transparent 72%);
   overflow: visible;
   user-select: none;
+}
+
+.workspace,
+.how-section,
+.features-section,
+.marquee-strip {
+  position: relative;
+  z-index: 5;
 }
 
 html[data-theme="light"] .big-particle-brand-banner {

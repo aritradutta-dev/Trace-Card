@@ -596,6 +596,7 @@ export default function ParticleText({
         overflow: "visible",
         touchAction: interaction === "none" ? "auto" : "pan-y",
         cursor: replay === "click" ? "pointer" : "default",
+        zIndex: 1,
       }}
     >
       <canvas
@@ -604,6 +605,7 @@ export default function ParticleText({
           position: "absolute",
           display: "block",
           pointerEvents: "none",
+          zIndex: 0,
         }}
       />
     </div>
