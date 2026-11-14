@@ -909,3 +909,99 @@ body { font-size: 16px; }
   }
 }
 
+/* ==========================================================================
+   Particle Text Decorative Banner (Framer Particle_Text Component)
+   ========================================================================== */
+.particle-showcase-section {
+  position: relative;
+  margin: 40px 0 28px;
+  padding: 30px 28px 22px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: radial-gradient(ellipse at 50% 50%, rgba(255, 101, 76, 0.06) 0%, transparent 72%), var(--panel);
+  box-shadow: 0 16px 40px -10px var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  transition: border-color 0.28s ease, box-shadow 0.28s ease;
+}
+
+.particle-showcase-section:hover {
+  border-color: var(--accent-border);
+  box-shadow: 0 20px 48px -10px rgba(255, 101, 76, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.particle-showcase-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.particle-showcase-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-radius: 9999px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  color: var(--muted);
+  font: 600 11px var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.particle-showcase-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  animation: particle-pulse 2s infinite ease-in-out;
+}
+
+@keyframes particle-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+
+.particle-text-wrapper {
+  width: 100%;
+  height: 190px;
+  position: relative;
+  margin: 4px 0 12px;
+}
+
+.particle-showcase-meta {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--muted);
+  font: 500 11px var(--font-mono);
+  letter-spacing: 0.08em;
+  border-top: 1px dashed var(--line-soft);
+  padding-top: 16px;
+  margin-top: 6px;
+}
+
+@media (max-width: 768px) {
+  .particle-showcase-section {
+    padding: 20px 16px 16px;
+    margin: 28px 0 20px;
+  }
+  .particle-text-wrapper {
+    height: 130px;
+  }
+  .particle-showcase-meta {
+    flex-direction: column;
+    gap: 6px;
+    text-align: center;
+  }
+  .particle-showcase-meta span:nth-child(2) {
+    display: none;
+  }
+}
+
+

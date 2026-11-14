@@ -5,7 +5,7 @@ import { brainMeshFaces, brainMeshVertices } from "@/components/neuralBrainMesh"
 
 type ProjectedPoint = { x: number; y: number; z: number };
 
-/** A light canvas adaptation of the supplied Framer NeuralBrain decoration. */
+
 export default function NeuralBrainDecoration() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -80,7 +80,7 @@ export default function NeuralBrainDecoration() {
         };
       });
 
-      // Soft mesh fill adds volume while the fine edge network keeps the shape legible.
+
       const orderedFaces = [...brainMeshFaces].sort((left, right) => {
         const leftDepth = (points[left[0]].z + points[left[1]].z + points[left[2]].z) / 3;
         const rightDepth = (points[right[0]].z + points[right[1]].z + points[right[2]].z) / 3;
@@ -173,9 +173,9 @@ export default function NeuralBrainDecoration() {
 
     const observer = "IntersectionObserver" in window
       ? new IntersectionObserver(([entry]) => {
-          visible = entry.isIntersecting;
-          queueDraw();
-        }, { threshold: 0.01 })
+        visible = entry.isIntersecting;
+        queueDraw();
+      }, { threshold: 0.01 })
       : null;
     observer?.observe(canvas);
 
