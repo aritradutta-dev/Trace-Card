@@ -11,6 +11,7 @@ export type ParticleTextProps = {
   };
   color?: string;
   color2?: string;
+  color3?: string;
   gradient?: boolean;
   background?: string;
   density?: number;
@@ -95,18 +96,19 @@ type Particle = {
 export default function ParticleText({
   text = "TRACECARD",
   font,
-  color = "#FFFFFF",
-  color2 = "#FF654C",
+  color = "#FFFDF9",
+  color2 = "#FF7D66",
+  color3 = "#FF654C",
   gradient = true,
   background = "transparent",
   density = 1.25,
   particleSize = 3.2,
-  shape = "square",
+  shape = "circle",
   entrance = "noise",
-  duration = 2.0,
+  duration = 4.8,
   interaction = "repel",
-  radius = 120,
-  force = 8,
+  radius = 130,
+  force = 7,
   idle = true,
   replay = "none",
   style,
@@ -121,6 +123,7 @@ export default function ParticleText({
   const live = useRef({
     color,
     color2,
+    color3,
     gradient,
     radius,
     force,
@@ -132,6 +135,7 @@ export default function ParticleText({
   live.current = {
     color,
     color2,
+    color3,
     gradient,
     radius,
     force,
@@ -325,33 +329,50 @@ export default function ParticleText({
       raf = 0;
       if (!alive) return;
       const L = live.current;
-      const key = `${L.color}|${L.color2}|${L.gradient}`;
+      const key = `${L.color}|${L.color2}|${L.color3}|${L.gradient}`;
       if (key !== colorKey) {
         colorKey = key;
         const c1 = resolveColor(L.color, box);
-        const c2 = L.gradient ? resolveColor(L.color2, box) : c1;
-        palette = Array.from({ length: 32 }, (_, i) => mix(c1, c2, i / 31));
+        const c2 = resolveColor(L.color2, box);
+        const c3 = L.gradient && L.color3 ? resolveColor(L.color3, box) : c2;
+        // 3-stop rich palette interpolation
+        palette = Array.from({ length: 32 }, (_, i) => {
+          const ratio = i / 31;
+          if (ratio <= 0.5) {
+            return mix(c1, c2, ratio * 2);
+          } else {
+            return mix(c2, c3, (ratio - 0.5) * 2);
+          }
+        });
       }
 
       let lastG = -1;
       const t = (performance.now() - t0) / 1000;
-      const k = reduce ? 1 : Math.min(1, t / Math.max(0.3, duration));
-      // Quintic ease-out for ultra smooth, cinematic deceleration
-      const ease = 1 - Math.pow(1 - k, 4);
+      const dur = Math.max(0.5, duration);
+
       ctx.clearRect(0, 0, W, H);
 
       const R = L.radius;
       const R2 = R * R;
       const size = L.particleSize;
 
-      // Soft, gentle arrival spring tension
-      const spring = 0.018 + 0.032 * ease;
-      const amp = (1 - ease) * 14 + (L.idle && !reduce ? 0.8 : 0);
-
       for (let i = 0; i < P.length; i++) {
         const p = P[i];
-        const nx = Math.sin(p.ph + t * 1.1) * amp;
-        const ny = Math.cos(p.ph * 1.3 + t * 0.9) * amp;
+
+        // Wave progression across letters for a smooth incoming arrival
+        const xRatio = p.tx / Math.max(1, W);
+        const delay = xRatio * 0.45;
+        const localT = Math.max(0, t - delay);
+        const localP = reduce ? 1 : Math.min(1, localT / (dur * 0.85));
+        // Smoothstep curve for soft acceleration and gentle settling
+        const pEase = localP * localP * (3 - 2 * localP);
+
+        // Spring tension starts soft (0.005) so particles float in slowly without snapping
+        const spring = 0.005 + 0.036 * pEase;
+        const amp = (1 - pEase) * 11 + (L.idle && !reduce ? 0.75 : 0);
+
+        const nx = Math.sin(p.ph + t * 0.95) * amp;
+        const ny = Math.cos(p.ph * 1.2 + t * 0.8) * amp;
 
         p.vx += (p.tx + nx - p.x) * spring;
         p.vy += (p.ty + ny - p.y) * spring;
@@ -374,9 +395,17 @@ export default function ParticleText({
           }
         }
 
-        // 0.88 damping provides silky, fluid glide without sudden halting
-        p.vx *= 0.88;
-        p.vy *= 0.88;
+        // Clamp speed during arrival so particles never rush
+        const maxSpeed = 1.3 + 2.2 * pEase;
+        const speed = Math.hypot(p.vx, p.vy);
+        if (speed > maxSpeed) {
+          p.vx = (p.vx / speed) * maxSpeed;
+          p.vy = (p.vy / speed) * maxSpeed;
+        }
+
+        // 0.915 fluid damping provides silky, fluid glide without sudden halting
+        p.vx *= 0.915;
+        p.vy *= 0.915;
         p.x += p.vx;
         p.y += p.vy;
 
@@ -386,8 +415,8 @@ export default function ParticleText({
           ctx.fillStyle = palette[p.g];
         }
 
-        ctx.globalAlpha = 0.55 + 0.45 * (1 - sp * 0.4);
-        const s = size * p.s * (1 + sp * 0.35);
+        ctx.globalAlpha = 0.6 + 0.4 * (1 - sp * 0.35);
+        const s = size * p.s * (1 + sp * 0.25);
 
         if (L.shape === "circle") {
           ctx.beginPath();
@@ -510,7 +539,7 @@ export default function ParticleText({
 
   useEffect(() => {
     redraw.current();
-  }, [color, color2, gradient, particleSize, shape]);
+  }, [color, color2, color3, gradient, particleSize, shape]);
 
   return (
     <div

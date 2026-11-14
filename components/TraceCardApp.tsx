@@ -837,16 +837,17 @@ export default function TraceCardApp() {
           <ParticleText
             text="TRACECARD"
             color={theme === "dark" ? "#FFFDF9" : "#181716"}
-            color2={theme === "dark" ? "#FF654C" : "#D94432"}
+            color2={theme === "dark" ? "#FF7D66" : "#C93B2B"}
+            color3={theme === "dark" ? "#FF654C" : "#E64935"}
             gradient={true}
-            density={1.3}
+            density={1.35}
             particleSize={3.2}
             shape="circle"
             entrance="noise"
-            duration={3.6}
+            duration={5.0}
             interaction="repel"
             radius={140}
-            force={8}
+            force={7.5}
             idle={true}
             replay="scroll"
             style={{ width: "100%", height: "100%" }}

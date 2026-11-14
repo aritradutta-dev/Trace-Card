@@ -915,14 +915,18 @@ body { font-size: 16px; }
 .big-particle-brand-banner {
   position: relative;
   width: 100%;
-  height: clamp(200px, 24vw, 340px);
-  margin: 28px 0 32px;
+  height: clamp(210px, 25vw, 350px);
+  margin: 32px 0 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  background: radial-gradient(ellipse 65% 55% at 50% 50%, rgba(255, 101, 76, 0.055) 0%, transparent 72%);
   overflow: visible;
   user-select: none;
+}
+
+html[data-theme="light"] .big-particle-brand-banner {
+  background: radial-gradient(ellipse 65% 55% at 50% 50%, rgba(217, 68, 50, 0.038) 0%, transparent 72%);
 }
 
 @media (max-width: 768px) {
