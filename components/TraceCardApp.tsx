@@ -865,9 +865,9 @@ export default function TraceCardApp() {
         <div className="big-particle-brand-banner" aria-label="TRACECARD animated particles">
           <ParticleText
             text="TRACECARD"
-            color={theme === "dark" ? "#FFFDF9" : "#181716"}
-            color2={theme === "dark" ? "#FF7D66" : "#C93B2B"}
-            color3={theme === "dark" ? "#FF654C" : "#E64935"}
+            color={theme === "dark" ? "#FFFFFF" : "#1E1D1B"}
+            color2={theme === "dark" ? "#D4EE8D" : "#6E8B40"}
+            color3={theme === "dark" ? "#B8D991" : "#526D2D"}
             gradient={true}
             density={1.35}
             particleSize={3.2}

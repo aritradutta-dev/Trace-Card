@@ -96,9 +96,9 @@ type Particle = {
 export default function ParticleText({
   text = "TRACECARD",
   font,
-  color = "#FFFDF9",
-  color2 = "#FF7D66",
-  color3 = "#FF654C",
+  color = "#FFFFFF",
+  color2 = "#D4EE8D",
+  color3 = "#B8D991",
   gradient = true,
   background = "transparent",
   density = 1.25,

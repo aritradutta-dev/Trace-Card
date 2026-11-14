@@ -920,13 +920,13 @@ body { font-size: 16px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse 65% 55% at 50% 50%, rgba(255, 101, 76, 0.055) 0%, transparent 72%);
+  background: radial-gradient(ellipse 65% 55% at 50% 50%, rgba(184, 217, 145, 0.075) 0%, transparent 72%);
   overflow: visible;
   user-select: none;
 }
 
 html[data-theme="light"] .big-particle-brand-banner {
-  background: radial-gradient(ellipse 65% 55% at 50% 50%, rgba(217, 68, 50, 0.038) 0%, transparent 72%);
+  background: radial-gradient(ellipse 65% 55% at 50% 50%, rgba(82, 109, 45, 0.05) 0%, transparent 72%);
 }
 
 @media (max-width: 768px) {
