@@ -163,7 +163,6 @@ export default function ParticleText({
     let H = 0;
     let dpr = 1;
     let raf = 0;
-    let visible = true;
     let alive = true;
     let sizeRetryRaf = 0;
     let sizeRetryCount = 0;
@@ -219,11 +218,12 @@ export default function ParticleText({
       const o = off.getContext("2d");
       if (!o) return [];
 
-      let fs = boxH / (lines.length * 1.05);
+      // Scale font so capital letters and upper ascents fit with generous vertical headroom
+      let fs = boxH * 0.70;
       o.font = `${italic}${weight} ${fs}px ${fam}`;
       const widest = Math.max(...lines.map((l) => o.measureText(l).width), 1);
       if (widest > 0) {
-        fs = Math.min(fs, (fs * boxW * 0.96) / widest);
+        fs = Math.min(fs, (fs * boxW * 0.90) / widest);
       }
       o.font = `${italic}${weight} ${fs}px ${fam}`;
       o.textAlign = "center";
@@ -248,10 +248,11 @@ export default function ParticleText({
       const ink = (x: number, y: number) =>
         data[(Math.floor(y) * ow + Math.floor(x)) * 4 + 3] > 120;
 
-      const minX = Math.max(0, Math.floor(centerX - boxW * 0.55));
-      const maxX = Math.min(ow, Math.ceil(centerX + boxW * 0.55));
-      const minY = Math.max(0, Math.floor(centerY - boxH * 0.65));
-      const maxY = Math.min(off.height, Math.ceil(centerY + boxH * 0.65));
+      // Scan full height with plenty of vertical margin so upper letter glyphs are NEVER cut off
+      const minX = Math.max(0, Math.floor(centerX - boxW * 0.6));
+      const maxX = Math.min(ow, Math.ceil(centerX + boxW * 0.6));
+      const minY = Math.max(0, Math.floor(centerY - boxH * 1.05));
+      const maxY = Math.min(off.height, Math.ceil(centerY + boxH * 1.05));
 
       let n = 0;
       for (let y = minY; y < maxY; y += 2) {
@@ -476,7 +477,7 @@ export default function ParticleText({
       }
 
       ctx.globalAlpha = 1;
-      if (!reduce && visible) raf = requestAnimationFrame(frame);
+      if (!reduce) raf = requestAnimationFrame(frame);
     }
 
     redraw.current = () => {
@@ -521,25 +522,6 @@ export default function ParticleText({
     });
     ro.observe(box);
 
-    let hasScrolledIntoView = false;
-    const io = new IntersectionObserver((entries) => {
-      const entry = entries[0];
-      visible = entry.isIntersecting;
-      if (visible) {
-        if (replay === "scroll" && !hasScrolledIntoView) {
-          hasScrolledIntoView = true;
-          build();
-          t0 = performance.now();
-        }
-        if (!raf) frame();
-      } else {
-        if (replay === "scroll") {
-          hasScrolledIntoView = false;
-        }
-      }
-    }, { threshold: 0.1 });
-    io.observe(box);
-
     const move = (e: PointerEvent) => {
       const r = cvs.getBoundingClientRect();
       mouse.x = e.clientX - r.left;
@@ -568,7 +550,6 @@ export default function ParticleText({
       cancelAnimationFrame(sizeRetryRaf);
       clearTimeout(rt);
       ro.disconnect();
-      io.disconnect();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerdown", down);
       window.removeEventListener("pointerup", up);
