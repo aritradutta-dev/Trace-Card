@@ -118,7 +118,7 @@ return <h2>{user.profile.name}</h2>;`;
 const SECRET_PATTERNS: { regex: RegExp; label: string }[] = [
   { regex: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/gi, label: "PRIVATE_KEY" },
   { regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, label: "JWT" },
-  { regex: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{30,}|sk-[A-Za-z0-9_-]{18,}|xox[baprs]-[A-Za-z0-9-]{12,}|AKIA[0-9A-Z]{16})\b/g, label: "SECRET" },
+  { regex: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{30,}|AQ\.[0-9A-Za-z_-]{20,}|sk-(?:ant-api\d{2}-)?[A-Za-z0-9_-]{18,}|xox[baprs]-[A-Za-z0-9-]{12,}|AKIA[0-9A-Z]{16})\b/g, label: "SECRET" },
   { regex: /\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, label: "TOKEN" },
 ];
 
@@ -129,13 +129,20 @@ function maskSecrets(value: string) {
     masked = masked.replace(regex, () => { count += 1; return `[MASKED_${label}]`; });
   };
   for (const pattern of SECRET_PATTERNS) replace(pattern.regex, pattern.label);
-  masked = masked.replace(/\b(api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|secret)\s*([:=])\s*["']?([^\s,;"'<>]+)/gi, (_match, key: string, separator: string) => {
+  masked = masked.replace(/(?:postgres|postgresql|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^:\s]+:([^@\s]+)@/gi, (full, pass: string) => {
+    count += 1;
+    return full.replace(`:${pass}@`, ":[MASKED_DB_PASSWORD]@");
+  });
+  masked = masked.replace(/\b(api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|secret|auth[_-]?token)\s*([:=])\s*["']?([^\s,;"'<>]+)/gi, (_match, key: string, separator: string) => {
     count += 1;
     return `${key}${separator}[MASKED_CREDENTIAL]`;
   });
   replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "EMAIL");
   replace(/\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g, "IP");
-  replace(/(?:\/Users\/|\/home\/|C:\\Users\\)([^/\\\s]+)/g, "USERNAME");
+  masked = masked.replace(/(?:\/Users\/|\/home\/|C:\\Users\\)([^/\\\s]+)/g, (full, user: string) => {
+    count += 1;
+    return full.replace(user, "[MASKED_USERNAME]");
+  });
   replace(/\b(?=[A-Za-z0-9+/=_-]{32,}\b)(?=[A-Za-z0-9+/=_-]*[a-z])(?=[A-Za-z0-9+/=_-]*[A-Z])(?=[A-Za-z0-9+/=_-]*\d)[A-Za-z0-9+/=_-]{32,}\b/g, "HIGH_ENTROPY");
   return { text: masked, count };
 }
@@ -744,8 +751,12 @@ export default function TraceCardApp() {
     const blob = new Blob([makeMarkdown(report, pendingPayload?.trace || maskedPreview.text)], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
-    anchor.href = url; anchor.download = "tracecard-report.md"; anchor.click();
-    URL.revokeObjectURL(url);
+    anchor.href = url;
+    anchor.download = "tracecard-report.md";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 500);
     setToast("Markdown report downloaded.");
   }
 
