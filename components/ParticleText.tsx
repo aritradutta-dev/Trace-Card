@@ -196,23 +196,34 @@ export default function ParticleText({
       const ch = box.clientHeight || 0;
       const rw = rect?.width || 0;
       const rh = rect?.height || 0;
-      const width = Math.max(0, cw || rw || fromStyleW || 1100);
-      const height = Math.max(0, ch || rh || fromStyleH || 280);
-      return { width, height };
+      const boxW = Math.max(0, cw || rw || fromStyleW || 1100);
+      const boxH = Math.max(0, ch || rh || fromStyleH || 280);
+
+      const winW = typeof window !== "undefined" ? window.innerWidth : 1200;
+      const winH = typeof window !== "undefined" ? window.innerHeight : 800;
+
+      // Bleed canvas boundaries generously across the whole viewport background
+      const bleedX = Math.max(160, Math.floor((winW - boxW) / 2) + 120);
+      const bleedY = Math.max(260, Math.floor(winH * 0.45));
+
+      const width = boxW + bleedX * 2;
+      const height = boxH + bleedY * 2;
+
+      return { boxW, boxH, bleedX, bleedY, width, height };
     }
 
-    function sample(): [number, number][] {
+    function sample(boxW: number, boxH: number, bleedX: number, bleedY: number): [number, number][] {
       const off = document.createElement("canvas");
       off.width = Math.max(1, Math.floor(W));
       off.height = Math.max(1, Math.floor(H));
       const o = off.getContext("2d");
       if (!o) return [];
 
-      let fs = H / (lines.length * 1.05);
+      let fs = boxH / (lines.length * 1.05);
       o.font = `${italic}${weight} ${fs}px ${fam}`;
       const widest = Math.max(...lines.map((l) => o.measureText(l).width), 1);
       if (widest > 0) {
-        fs = Math.min(fs, (fs * W * 0.96) / widest);
+        fs = Math.min(fs, (fs * boxW * 0.96) / widest);
       }
       o.font = `${italic}${weight} ${fs}px ${fam}`;
       o.textAlign = "center";
@@ -220,8 +231,10 @@ export default function ParticleText({
       o.fillStyle = "#000";
 
       const lh = fs * 1.05;
+      const centerX = bleedX + boxW / 2;
+      const centerY = bleedY + boxH / 2;
       lines.forEach((l, i) =>
-        o.fillText(l, W / 2, H / 2 + (i - (lines.length - 1) / 2) * lh)
+        o.fillText(l, centerX, centerY + (i - (lines.length - 1) / 2) * lh)
       );
 
       let data: Uint8ClampedArray;
@@ -235,19 +248,24 @@ export default function ParticleText({
       const ink = (x: number, y: number) =>
         data[(Math.floor(y) * ow + Math.floor(x)) * 4 + 3] > 120;
 
+      const minX = Math.max(0, Math.floor(centerX - boxW * 0.55));
+      const maxX = Math.min(ow, Math.ceil(centerX + boxW * 0.55));
+      const minY = Math.max(0, Math.floor(centerY - boxH * 0.65));
+      const maxY = Math.min(off.height, Math.ceil(centerY + boxH * 0.65));
+
       let n = 0;
-      for (let y = 0; y < off.height; y += 2) {
-        for (let x = 0; x < ow; x += 2) {
+      for (let y = minY; y < maxY; y += 2) {
+        for (let x = minX; x < maxX; x += 2) {
           if (ink(x, y)) n++;
         }
       }
       const area = n * 4;
-      const budget = (W < 600 ? 3600 : 8500) * density;
+      const budget = (boxW < 600 ? 3600 : 8500) * density;
       const gap = Math.max(2.0, Math.sqrt(area / Math.max(1, budget)));
       const pts: [number, number][] = [];
 
-      for (let y = gap / 2; y < off.height; y += gap) {
-        for (let x = gap / 2; x < ow; x += gap) {
+      for (let y = minY + gap / 2; y < maxY; y += gap) {
+        for (let x = minX + gap / 2; x < maxX; x += gap) {
           const jx = Math.min(ow - 1, Math.max(0, x + (Math.random() - 0.5) * gap * 0.9));
           const jy = Math.min(off.height - 1, Math.max(0, y + (Math.random() - 0.5) * gap * 0.9));
           if (ink(jx, jy)) pts.push([jx, jy]);
@@ -260,25 +278,55 @@ export default function ParticleText({
       if (reduce || entrance === "none") return [x, y];
       if (entrance === "explode") {
         const angle = Math.random() * Math.PI * 2;
-        const dist = 20 + Math.random() * 80;
+        const dist = 30 + Math.random() * 120;
         return [W / 2 + Math.cos(angle) * dist, H / 2 + Math.sin(angle) * dist];
       }
       if (entrance === "rain") {
-        return [x + (Math.random() - 0.5) * 40, -Math.random() * H * 0.6 - 30];
+        return [x + (Math.random() - 0.5) * 80, -Math.random() * H * 0.4 - 40];
       }
-      // Organic celestial dispersal around target
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 50 + Math.random() * Math.max(W * 0.38, H * 0.75);
-      return [x + Math.cos(angle) * dist, y + Math.sin(angle) * dist];
+
+      // Enter from across the whole surrounding background (screen edges & deep field)
+      const roll = Math.random();
+      if (roll < 0.35) {
+        // High above into hero, or deep below into workspace
+        return [
+          Math.random() * W,
+          Math.random() < 0.5 ? -Math.random() * 160 : H + Math.random() * 160,
+        ];
+      } else if (roll < 0.7) {
+        // Wide left and right offscreen flanks
+        return [
+          Math.random() < 0.5 ? -Math.random() * 160 : W + Math.random() * 160,
+          Math.random() * H,
+        ];
+      } else {
+        // Deep background celestial dispersion
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 140 + Math.random() * Math.max(W * 0.45, H * 0.65);
+        return [x + Math.cos(angle) * dist, y + Math.sin(angle) * dist];
+      }
     }
+
+    let bleedX = 0;
+    let bleedY = 0;
 
     function build() {
       dpr = Math.min(2, window.devicePixelRatio || 1);
       const size = resolveSize();
       W = size.width;
       H = size.height;
+      bleedX = size.bleedX;
+      bleedY = size.bleedY;
+
       cvs.width = Math.max(1, W * dpr);
       cvs.height = Math.max(1, H * dpr);
+      cvs.style.position = "absolute";
+      cvs.style.left = `-${bleedX}px`;
+      cvs.style.top = `-${bleedY}px`;
+      cvs.style.width = `${W}px`;
+      cvs.style.height = `${H}px`;
+      cvs.style.pointerEvents = "none";
+
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       if (W < 2 || H < 2) {
@@ -286,7 +334,7 @@ export default function ParticleText({
         return false;
       }
 
-      P = sample()
+      P = sample(size.boxW, size.boxH, size.bleedX, size.bleedY)
         .map(([x, y]) => {
           const [sx, sy] = start(x, y);
           return {
@@ -298,7 +346,7 @@ export default function ParticleText({
             vy: 0,
             s: Math.random() * 0.7 + 0.65,
             ph: Math.random() * Math.PI * 2,
-            g: Math.min(31, Math.floor((x / Math.max(1, W)) * 32)),
+            g: Math.min(31, Math.max(0, Math.floor(((x - bleedX) / Math.max(1, size.boxW)) * 32))),
           };
         })
         .sort((a, b) => a.g - b.g);
@@ -508,10 +556,10 @@ export default function ParticleText({
       mouse.down = false;
     };
 
-    box.addEventListener("pointermove", move);
-    box.addEventListener("pointerdown", down);
-    box.addEventListener("pointerup", up);
-    box.addEventListener("pointerleave", leave);
+    window.addEventListener("pointermove", move, { passive: true });
+    window.addEventListener("pointerdown", down, { passive: true });
+    window.addEventListener("pointerup", up, { passive: true });
+    window.addEventListener("pointerleave", leave);
 
     return () => {
       alive = false;
@@ -521,10 +569,10 @@ export default function ParticleText({
       clearTimeout(rt);
       ro.disconnect();
       io.disconnect();
-      box.removeEventListener("pointermove", move);
-      box.removeEventListener("pointerdown", down);
-      box.removeEventListener("pointerup", up);
-      box.removeEventListener("pointerleave", leave);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerdown", down);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointerleave", leave);
     };
   }, [
     text,
@@ -562,7 +610,7 @@ export default function ParticleText({
         position: "relative",
         width: "100%",
         background,
-        overflow: "hidden",
+        overflow: "visible",
         touchAction: interaction === "none" ? "auto" : "pan-y",
         cursor: replay === "click" ? "pointer" : "default",
       }}
@@ -571,9 +619,6 @@ export default function ParticleText({
         ref={canvas}
         style={{
           position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
           display: "block",
           pointerEvents: "none",
         }}
