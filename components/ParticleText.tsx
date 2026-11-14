@@ -254,11 +254,18 @@ export default function ParticleText({
 
     function start(x: number, y: number): [number, number] {
       if (reduce || entrance === "none") return [x, y];
-      if (entrance === "explode")
-        return [W / 2 + (Math.random() - 0.5) * 40, H / 2 + (Math.random() - 0.5) * 40];
-      if (entrance === "rain")
-        return [x + (Math.random() - 0.5) * 60, -Math.random() * H - 40];
-      return [Math.random() * W, Math.random() * H];
+      if (entrance === "explode") {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 20 + Math.random() * 80;
+        return [W / 2 + Math.cos(angle) * dist, H / 2 + Math.sin(angle) * dist];
+      }
+      if (entrance === "rain") {
+        return [x + (Math.random() - 0.5) * 40, -Math.random() * H * 0.6 - 30];
+      }
+      // Organic celestial dispersal around target
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 50 + Math.random() * Math.max(W * 0.38, H * 0.75);
+      return [x + Math.cos(angle) * dist, y + Math.sin(angle) * dist];
     }
 
     function build() {
@@ -329,21 +336,25 @@ export default function ParticleText({
       let lastG = -1;
       const t = (performance.now() - t0) / 1000;
       const k = reduce ? 1 : Math.min(1, t / Math.max(0.3, duration));
-      const ease = 1 - Math.pow(1 - k, 3);
+      // Quintic ease-out for ultra smooth, cinematic deceleration
+      const ease = 1 - Math.pow(1 - k, 4);
       ctx.clearRect(0, 0, W, H);
 
       const R = L.radius;
       const R2 = R * R;
       const size = L.particleSize;
 
+      // Soft, gentle arrival spring tension
+      const spring = 0.018 + 0.032 * ease;
+      const amp = (1 - ease) * 14 + (L.idle && !reduce ? 0.8 : 0);
+
       for (let i = 0; i < P.length; i++) {
         const p = P[i];
-        const amp = (1 - ease) * 30 + (L.idle && !reduce ? 1.2 : 0);
-        const nx = Math.sin(p.ph + t * 1.4) * amp;
-        const ny = Math.cos(p.ph * 1.3 + t * 1.1) * amp;
+        const nx = Math.sin(p.ph + t * 1.1) * amp;
+        const ny = Math.cos(p.ph * 1.3 + t * 0.9) * amp;
 
-        p.vx += (p.tx + nx - p.x) * (0.03 + 0.04 * ease);
-        p.vy += (p.ty + ny - p.y) * (0.03 + 0.04 * ease);
+        p.vx += (p.tx + nx - p.x) * spring;
+        p.vy += (p.ty + ny - p.y) * spring;
 
         if (L.interaction !== "none") {
           const dx = p.x - mouse.x;
@@ -363,8 +374,9 @@ export default function ParticleText({
           }
         }
 
-        p.vx *= 0.82;
-        p.vy *= 0.82;
+        // 0.88 damping provides silky, fluid glide without sudden halting
+        p.vx *= 0.88;
+        p.vy *= 0.88;
         p.x += p.vx;
         p.y += p.vy;
 
@@ -374,8 +386,8 @@ export default function ParticleText({
           ctx.fillStyle = palette[p.g];
         }
 
-        ctx.globalAlpha = 0.55 + 0.45 * (1 - sp * 0.5);
-        const s = size * p.s * (1 + sp * 0.5);
+        ctx.globalAlpha = 0.55 + 0.45 * (1 - sp * 0.4);
+        const s = size * p.s * (1 + sp * 0.35);
 
         if (L.shape === "circle") {
           ctx.beginPath();
