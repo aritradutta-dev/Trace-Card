@@ -1,0 +1,2301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Trace-Card | Every failed build, turned into a verified fix</title>
+  <meta name="description" content="Trace-Card is an open-source GitHub Action that reads your failed CI run, asks Gemini what went wrong, proves the fix works, and remembers it for next time.">
+
+  <!-- Core Three.js r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="window.__traceThreeFailed = true"></script>
+
+  <style>
+    /* -------------------------------------------------------------
+       CSS RESET & DESIGN TOKENS
+       ------------------------------------------------------------- */
+    :root {
+      --bg-base: #07090d;
+      --bg-panel: rgba(15, 23, 42, 0.72);
+      --bg-panel-border: rgba(255, 255, 255, 0.1);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --cyan: #22d3ee;
+      --cyan-glow: rgba(34, 211, 238, 0.25);
+      --emerald: #34d399;
+      --emerald-glow: rgba(52, 211, 153, 0.25);
+      --amber: #fbbf24;
+      --red: #f87171;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* -------------------------------------------------------------
+       WEBGL CANVAS CONTAINER
+       ------------------------------------------------------------- */
+    #webgl-canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    #webgl-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* -------------------------------------------------------------
+       UI OVERLAYS & CONTENT WRAPPER
+       ------------------------------------------------------------- */
+    .content-wrapper {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+    }
+
+    /* -------------------------------------------------------------
+       NAVBAR
+       ------------------------------------------------------------- */
+    .nav {
+      position: sticky;
+      top: 0;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.1rem 2.5rem;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      background: rgba(7, 9, 13, 0.75);
+      border-bottom: 1px solid var(--bg-panel-border);
+      z-index: 100;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.65rem;
+      text-decoration: none;
+      color: var(--text-main);
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-icon {
+      width: 22px;
+      height: 22px;
+      fill: none;
+      stroke: var(--cyan);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.75rem;
+      list-style: none;
+    }
+
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+      font-weight: 500;
+      transition: color 0.18s ease;
+    }
+
+    .nav-link:hover, .nav-link:focus-visible {
+      color: var(--cyan);
+      outline: none;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.65rem 1.25rem;
+      border-radius: 9999px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary {
+      background: var(--cyan);
+      color: #050b14;
+      box-shadow: 0 0 20px var(--cyan-glow);
+    }
+
+    .btn-primary:hover {
+      background: #38bdf8;
+      box-shadow: 0 0 28px rgba(34, 211, 238, 0.45);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+      border-color: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(8px);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    .btn-emerald {
+      background: var(--emerald);
+      color: #022013;
+      box-shadow: 0 0 20px var(--emerald-glow);
+    }
+
+    /* -------------------------------------------------------------
+       SECTION STYLES
+       ------------------------------------------------------------- */
+    section {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 6rem 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .section-tag {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--cyan);
+      margin-bottom: 0.75rem;
+    }
+
+    .section-title {
+      font-size: clamp(2.2rem, 5vw, 3.8rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+      margin-bottom: 1.25rem;
+      max-width: 850px;
+    }
+
+    .section-sub {
+      font-size: clamp(1.05rem, 2vw, 1.3rem);
+      color: var(--text-muted);
+      max-width: 680px;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+
+    /* -------------------------------------------------------------
+       HERO SECTION
+       ------------------------------------------------------------- */
+    #hero {
+      min-height: calc(100vh - 72px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      padding-top: 3rem;
+    }
+
+    .hero-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-footnote {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .scroll-cue {
+      position: absolute;
+      bottom: 2.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      animation: floatSlow 2s ease-in-out infinite;
+    }
+
+    .scroll-chevron {
+      width: 18px;
+      height: 18px;
+      stroke: var(--cyan);
+      fill: none;
+      stroke-width: 2;
+    }
+
+    @keyframes floatSlow {
+      0%, 100% { transform: translate(-50%, 0); }
+      50% { transform: translate(-50%, 8px); }
+    }
+
+    /* -------------------------------------------------------------
+       PROBLEM SECTION
+       ------------------------------------------------------------- */
+    .metric-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.4rem 1rem;
+      background: rgba(248, 113, 113, 0.12);
+      border: 1px solid rgba(248, 113, 113, 0.35);
+      border-radius: 9999px;
+      color: var(--red);
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .pain-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-top: 2rem;
+      width: 100%;
+    }
+
+    .card {
+      background: var(--bg-panel);
+      border: 1px solid var(--bg-panel-border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      backdrop-filter: blur(12px);
+      transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(34, 211, 238, 0.3);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-title .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+    }
+
+    .card-desc {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    /* -------------------------------------------------------------
+       HOW IT WORKS PINNED SECTION
+       ------------------------------------------------------------- */
+    #how-it-works {
+      min-height: 250vh;
+      position: relative;
+      display: block;
+      padding: 0;
+    }
+
+    .pinned-container {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+      pointer-events: none;
+    }
+
+    .steps-sidebar {
+      width: 100%;
+      max-width: 440px;
+      pointer-events: auto;
+      background: rgba(7, 9, 13, 0.85);
+      border: 1px solid var(--bg-panel-border);
+      border-radius: 20px;
+      padding: 2rem;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+
+    .step-stepper {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .step-pill {
+      flex: 1;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+      cursor: pointer;
+      border: none;
+      transition: background 0.25s ease;
+    }
+
+    .step-pill.active {
+      background: var(--cyan);
+      box-shadow: 0 0 10px var(--cyan);
+    }
+
+    .step-content {
+      min-height: 130px;
+    }
+
+    .step-number {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--cyan);
+      text-transform: uppercase;
+      margin-bottom: 0.35rem;
+    }
+
+    .step-heading {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 0.6rem;
+    }
+
+    .step-text {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    /* -------------------------------------------------------------
+       THE TRACE CARD SECTION (INTERACTIVE 3D PRODUCT SHOT)
+       ------------------------------------------------------------- */
+    .interactive-card-area {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2.5rem;
+      align-items: center;
+      width: 100%;
+    }
+
+    @media (max-width: 860px) {
+      .interactive-card-area {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .tab-bar {
+      display: inline-flex;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--bg-panel-border);
+      padding: 0.25rem;
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn.active {
+      background: rgba(34, 211, 238, 0.15);
+      color: var(--cyan);
+    }
+
+    .card-viewport {
+      width: 100%;
+      height: 480px;
+      perspective: 1200px;
+      cursor: grab;
+      position: relative;
+    }
+
+    .card-viewport:active {
+      cursor: grabbing;
+    }
+
+    .card-3d-wrapper {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .card-3d-wrapper.flipped {
+      transform: rotateY(180deg);
+    }
+
+    .card-face {
+      position: absolute;
+      inset: 0;
+      border-radius: 20px;
+      padding: 2rem;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(10, 15, 30, 0.95) 100%);
+      backdrop-filter: blur(20px);
+    }
+
+    .card-face.back {
+      transform: rotateY(180deg);
+      border-color: rgba(52, 211, 153, 0.3);
+    }
+
+    .card-header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      padding: 0.3rem 0.75rem;
+      border-radius: 9999px;
+      background: rgba(248, 113, 113, 0.15);
+      color: var(--red);
+      border: 1px solid rgba(248, 113, 113, 0.3);
+      width: fit-content;
+    }
+
+    .card-face.back .card-header-badge {
+      background: rgba(52, 211, 153, 0.15);
+      color: var(--emerald);
+      border-color: rgba(52, 211, 153, 0.3);
+    }
+
+    .card-sample-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.75rem;
+    }
+
+    .diff-block {
+      background: #020408;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      line-height: 1.6;
+      margin: 1rem 0;
+      overflow-x: auto;
+    }
+
+    .diff-red { color: var(--red); }
+    .diff-green { color: var(--emerald); font-weight: 600; }
+
+    /* -------------------------------------------------------------
+       WHAT MAKES IT DIFFERENT
+       ------------------------------------------------------------- */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.75rem;
+      margin-bottom: 3.5rem;
+    }
+
+    .feature-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--bg-panel-border);
+      border-radius: 20px;
+      padding: 2.25rem 2rem;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .feature-card:hover {
+      border-color: var(--cyan);
+      box-shadow: 0 15px 35px rgba(34, 211, 238, 0.12);
+      transform: translateY(-6px);
+    }
+
+    .feature-icon-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.25rem;
+      background: rgba(34, 211, 238, 0.1);
+      color: var(--cyan);
+      border: 1px solid rgba(34, 211, 238, 0.25);
+    }
+
+    .comparison-strip {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--bg-panel-border);
+      border-radius: 16px;
+      padding: 1.75rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 2rem;
+      backdrop-filter: blur(12px);
+    }
+
+    @media (max-width: 720px) {
+      .comparison-strip {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+
+    .strip-item {
+      flex: 1;
+    }
+
+    .strip-label {
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.35rem;
+    }
+
+    .strip-item.old .strip-label { color: var(--red); }
+    .strip-item.new .strip-label { color: var(--emerald); }
+
+    .strip-val {
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    /* -------------------------------------------------------------
+       POWERED BY GEMINI (CONSTELLATION)
+       ------------------------------------------------------------- */
+    .gemini-constellation-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5rem;
+      margin-top: 2rem;
+    }
+
+    .gemini-node {
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(34, 211, 238, 0.18);
+      border-radius: 14px;
+      padding: 1.5rem;
+      position: relative;
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+
+    .gemini-node:hover, .gemini-node:focus-visible {
+      background: rgba(34, 211, 238, 0.1);
+      border-color: var(--cyan);
+      transform: translateY(-3px);
+      box-shadow: 0 10px 25px rgba(34, 211, 238, 0.18);
+      outline: none;
+    }
+
+    .gemini-node-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.65rem;
+    }
+
+    .gemini-node-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 10px var(--cyan);
+    }
+
+    .gemini-node-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .gemini-node-desc {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* -------------------------------------------------------------
+       DEMO VIDEO SECTION
+       ------------------------------------------------------------- */
+    .monitor-frame {
+      width: 100%;
+      max-width: 900px;
+      margin: 2.5rem auto 0;
+      aspect-ratio: 16 / 9;
+      background: #020408;
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(34, 211, 238, 0.1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2.5rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .play-btn-circle {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      background: rgba(34, 211, 238, 0.15);
+      border: 2px solid var(--cyan);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--cyan);
+      cursor: pointer;
+      margin-bottom: 1.5rem;
+      transition: all 0.25s ease;
+      box-shadow: 0 0 30px var(--cyan-glow);
+      padding: 0;
+      font: inherit;
+    }
+
+    .demo-output { width: min(100%, 680px); margin: .75rem 0 0; padding: .85rem 1rem; display: grid; gap: .5rem; text-align: left; border: 1px solid rgba(34,211,238,.18); border-radius: 12px; background: rgba(2,4,8,.72); color: var(--text-muted); font: .75rem/1.4 var(--font-mono); }
+    .demo-output[hidden] { display: none; }
+    .demo-output li::marker { color: var(--emerald); }
+
+    .play-btn-circle:hover {
+      transform: scale(1.08);
+      background: var(--cyan);
+      color: #020408;
+    }
+
+    .play-icon {
+      width: 28px;
+      height: 28px;
+      fill: currentColor;
+      margin-left: 4px;
+    }
+
+    /* -------------------------------------------------------------
+       INSTALL IN 3 STEPS
+       ------------------------------------------------------------- */
+    .install-steps-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+    }
+
+    .install-step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 1.25rem;
+      background: var(--bg-panel);
+      border: 1px solid var(--bg-panel-border);
+      border-radius: 14px;
+      padding: 1.25rem 1.5rem;
+    }
+
+    .install-step-idx {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(34, 211, 238, 0.12);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      font-weight: 700;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .code-window {
+      background: #020408;
+      border: 1px solid var(--bg-panel-border);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-top: 1.5rem;
+    }
+
+    .code-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1.25rem;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--bg-panel-border);
+    }
+
+    .code-title {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .code-pre {
+      padding: 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      line-height: 1.6;
+      color: #e2e8f0;
+      overflow-x: auto;
+    }
+
+    /* -------------------------------------------------------------
+       ROADMAP SECTION
+       ------------------------------------------------------------- */
+    .roadmap-timeline {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.5rem;
+      position: relative;
+      margin-top: 3rem;
+    }
+
+    .roadmap-node {
+      background: var(--bg-panel);
+      border: 1px solid var(--bg-panel-border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      position: relative;
+    }
+
+    .roadmap-node.active-now {
+      border-color: var(--emerald);
+      box-shadow: 0 0 25px rgba(52, 211, 153, 0.15);
+    }
+
+    .roadmap-status-pill {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      margin-bottom: 0.75rem;
+    }
+
+    .roadmap-node.active-now .roadmap-status-pill {
+      background: rgba(52, 211, 153, 0.2);
+      color: var(--emerald);
+      border: 1px solid var(--emerald);
+    }
+
+    .roadmap-node:not(.active-now) .roadmap-status-pill {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+    }
+
+    /* -------------------------------------------------------------
+       FOOTER
+       ------------------------------------------------------------- */
+    footer {
+      border-top: 1px solid var(--bg-panel-border);
+      padding: 4rem 2rem 2.5rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 3rem;
+      margin-bottom: 3rem;
+    }
+
+    @media (max-width: 768px) {
+      .footer-grid {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+      }
+    }
+
+    /* -------------------------------------------------------------
+       LOADING SCREEN
+       ------------------------------------------------------------- */
+    #loader {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-base);
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.25rem;
+      transition: opacity 0.6s ease, visibility 0.6s ease;
+    }
+
+    .loader-spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid rgba(34, 211, 238, 0.15);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .loader-text {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--cyan);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* -------------------------------------------------------------
+       ACCESSIBILITY & REDUCED MOTION
+       ------------------------------------------------------------- */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+      #webgl-canvas-container {
+        display: none !important;
+      }
+      .card-3d-wrapper {
+        transform: none !important;
+      }
+    }
+
+    /* TraceCard landing refinements: safe areas, Vireoo-inspired structure,
+       and a clear hierarchy around the procedural 3D story. */
+    #dot-grid-canvas-container { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; opacity: .42; -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0,0,0,.7) 58%, transparent 100%); mask-image: linear-gradient(to bottom, #000 0%, rgba(0,0,0,.7) 58%, transparent 100%); }
+    #dot-grid-canvas { display: block; width: 100%; height: 100%; }
+    header { padding-top: env(safe-area-inset-top); }
+    .nav { padding-left: max(1.25rem, env(safe-area-inset-left)); padding-right: max(1.25rem, env(safe-area-inset-right)); }
+    section, footer { padding-left: max(2rem, env(safe-area-inset-left)); padding-right: max(2rem, env(safe-area-inset-right)); }
+    footer { padding-bottom: calc(2.5rem + env(safe-area-inset-bottom)); }
+    #hero { min-height: calc(100svh - 72px); align-items: flex-start; }
+    #hero .section-title, #hero .section-sub, #hero .hero-buttons, #hero .hero-footnote { max-width: min(760px, 64vw); }
+    #hero .section-title { font-size: clamp(3rem, 5.2vw, 5rem); line-height: .98; letter-spacing: -.065em; text-wrap: balance; }
+    #hero .section-sub { font-size: clamp(1rem, 1.55vw, 1.16rem); line-height: 1.6; }
+    .hero-statuses { position: absolute; right: clamp(1.5rem, 6vw, 6rem); top: 38%; display: grid; gap: .65rem; z-index: 2; }
+    .hero-status-chip { display: inline-flex; align-items: center; gap: .65rem; min-width: 175px; padding: .7rem .85rem; color: var(--text-main); background: rgba(10, 16, 24, .72); border: 1px solid rgba(148, 163, 184, .2); border-radius: 999px; backdrop-filter: blur(12px); font: .74rem/1 var(--font-mono); box-shadow: 0 10px 35px rgba(0,0,0,.18); }
+    .hero-status-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan-glow); }
+    .hero-status-chip.is-verified i { background: var(--emerald); box-shadow: 0 0 12px var(--emerald-glow); }
+    .hero-status-chip.is-warning i { background: var(--amber); box-shadow: 0 0 12px rgba(251,191,36,.45); }
+    .capability-row { min-height: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; max-width: 1200px; padding-top: 0; padding-bottom: 3rem; border-bottom: 1px solid var(--bg-panel-border); }
+    .capability-item { display: flex; align-items: center; gap: .8rem; padding: 1.1rem 1rem; border-right: 1px solid var(--bg-panel-border); color: var(--text-muted); font: .76rem/1.3 var(--font-mono); }
+    .capability-item:last-child { border-right: 0; }
+    .capability-item b { color: var(--text-main); font: 600 .83rem/1.3 var(--font-sans); }
+    .capability-item svg { flex: 0 0 18px; color: var(--cyan); }
+    #how-it-works { min-height: 400vh; }
+    .pinned-container { max-width: 1320px; }
+    .steps-sidebar { max-width: 400px; border-radius: 18px; }
+    .final-cta { min-height: 0; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2rem; margin: 3rem auto; padding-top: 3rem; padding-bottom: 3rem; border: 1px solid rgba(34,211,238,.22); border-radius: 24px; background: radial-gradient(circle at 82% 10%, rgba(34,211,238,.12), transparent 35%), rgba(15,23,42,.62); }
+    .final-cta h2 { max-width: 720px; margin: .25rem 0 .6rem; font-size: clamp(2rem, 4vw, 3.4rem); line-height: 1.05; letter-spacing: -.05em; }
+    .final-cta p { max-width: 620px; margin: 0; color: var(--text-muted); }
+    .final-cta-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+    .final-cta .section-tag { margin-bottom: .25rem; }
+    .nav .btn-primary { white-space: nowrap; }
+    .step-pill:focus-visible, .btn:focus-visible, .tab-btn:focus-visible, .play-btn-circle:focus-visible, .nav-link:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
+    @media (max-width: 900px) {
+      #hero .section-title, #hero .section-sub, #hero .hero-buttons, #hero .hero-footnote { max-width: 76vw; }
+      .hero-statuses { right: 2rem; top: auto; bottom: 15%; }
+      .hero-status-chip { min-width: 150px; }
+      .capability-row { grid-template-columns: repeat(2, 1fr); }
+      .capability-item:nth-child(2) { border-right: 0; }
+      .capability-item:nth-child(-n+2) { border-bottom: 1px solid var(--bg-panel-border); }
+      .final-cta { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 680px) {
+      #dot-grid-canvas-container { opacity: .3; }
+      .nav { gap: .7rem; padding-top: .85rem; padding-bottom: .85rem; }
+      .nav-links { display: none; }
+      .nav .btn { padding: .58rem .8rem; font-size: .75rem; }
+      section, footer { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
+      #hero { min-height: min(850px, calc(100svh - 65px)); padding-top: 2rem; padding-bottom: 8rem; }
+      #hero .section-title, #hero .section-sub, #hero .hero-buttons, #hero .hero-footnote { max-width: 100%; }
+      #hero .section-title { max-width: 12ch; font-size: clamp(2.8rem, 12vw, 4.6rem); }
+      #hero .section-sub { max-width: 38ch; }
+      .hero-statuses { left: 1rem; right: 1rem; bottom: 5rem; display: flex; flex-wrap: wrap; gap: .45rem; }
+      .hero-status-chip { min-width: 0; padding: .6rem .7rem; font-size: .62rem; }
+      .capability-row { padding-bottom: 2rem; }
+      .capability-item { gap: .55rem; padding: .9rem .45rem; font-size: .62rem; }
+      .capability-item b { font-size: .7rem; }
+      #how-it-works { min-height: 360vh; }
+      .pinned-container { padding: 1rem; }
+      .steps-sidebar { max-width: 100%; margin-top: 19vh; padding: 1.25rem; background: rgba(7,9,13,.78); }
+      .step-content { min-height: 115px; }
+      .final-cta { margin: 2rem auto; padding-top: 2rem; padding-bottom: 2rem; border-radius: 18px; }
+      .final-cta-actions { width: 100%; }
+      .final-cta-actions .btn { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LOADING SCREEN -->
+  <div id="loader" role="status" aria-live="polite">
+    <div class="loader-spinner" aria-hidden="true"></div>
+    <div class="loader-text">Tracing...</div>
+  </div>
+
+  <!-- Interactive dot field adapted from the Framer module supplied for this page. -->
+  <div id="dot-grid-canvas-container" aria-hidden="true">
+    <canvas id="dot-grid-canvas"></canvas>
+  </div>
+
+  <!-- FIXED THREE.JS WEBGL CANVAS BACKGROUND -->
+  <div id="webgl-canvas-container" aria-hidden="true">
+    <canvas id="webgl-canvas"></canvas>
+  </div>
+
+  <!-- MAIN SCROLLABLE CONTENT -->
+  <div class="content-wrapper">
+
+    <!-- NAVIGATION -->
+    <header>
+      <nav class="nav" aria-label="Main Navigation">
+        <a href="#hero" class="brand" aria-label="Trace-Card Home">
+          <svg class="brand-icon" viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="16" rx="3"></rect>
+            <line x1="7" y1="9" x2="17" y2="9"></line>
+            <line x1="7" y1="13" x2="13" y2="13"></line>
+          </svg>
+          Trace-Card
+        </a>
+
+        <ul class="nav-links">
+          <li><a href="#problem" class="nav-link">Why Trace-Card</a></li>
+          <li><a href="#how-it-works" class="nav-link">How it works</a></li>
+          <li><a href="#trace-card" class="nav-link">Inside</a></li>
+          <li><a href="#gemini" class="nav-link">Gemini</a></li>
+          <li><a href="#install" class="nav-link">Install</a></li>
+        </ul>
+
+        <a href="/workspace" class="btn btn-primary">
+          Try Trace-Card
+        </a>
+      </nav>
+    </header>
+
+    <main>
+      <!-- SECTION 1: HERO -->
+      <section id="hero" aria-labelledby="hero-title">
+        <span class="section-tag">GitHub Action &bull; MLH Hackathon &bull; Open Source</span>
+        <h1 id="hero-title" class="section-title">
+          Every failed build,<br>turned into a verified fix.
+        </h1>
+        <p class="section-sub">
+          Trace-Card is a GitHub Action that reads your failed CI run, asks Gemini what went wrong, proves the fix works, and remembers it for next time.
+        </p>
+        <div class="hero-buttons">
+          <a href="/workspace" class="btn btn-primary">
+            Open the workspace
+          </a>
+          <a href="#trace-card" class="btn btn-secondary">
+            See a Trace Card
+          </a>
+        </div>
+        <p class="hero-footnote">Open source. Built with the Google Gemini API.</p>
+        <div class="hero-statuses" aria-label="Trace-Card capabilities">
+          <span class="hero-status-chip is-verified"><i aria-hidden="true"></i> Verified fixes</span>
+          <span class="hero-status-chip"><i aria-hidden="true"></i> Error memory</span>
+          <span class="hero-status-chip is-warning"><i aria-hidden="true"></i> Secrets masked</span>
+        </div>
+
+        <a href="#problem" class="scroll-cue" aria-label="Scroll down to inspect the problem">
+          <span>Scroll to trace it</span>
+          <svg class="scroll-chevron" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </a>
+      </section>
+
+      <section class="capability-row" aria-label="Trace-Card capabilities">
+        <div class="capability-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 5h16M4 10h11M4 15h8M4 20h5"/><path d="m17 15 2 2 4-5"/></svg><b>Trim the noise</b><span>to the failing frame</span></div>
+        <div class="capability-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg><b>Mask secrets</b><span>before analysis</span></div>
+        <div class="capability-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m4 12 5 5L20 6"/><circle cx="12" cy="12" r="10"/></svg><b>Verify patches</b><span>on the runner</span></div>
+        <div class="capability-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg><b>Remember fixes</b><span>for the next run</span></div>
+      </section>
+
+      <!-- SECTION 2: THE PROBLEM -->
+      <section id="problem" aria-labelledby="problem-title">
+        <div class="metric-pill">
+          <span class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--red);"></span>
+          CI Run Failed &bull; 4,812 lines in example log
+        </div>
+        <span class="section-tag">The Problem</span>
+        <h2 id="problem-title" class="section-title">
+          The build is red.<br>Where is the bug?
+        </h2>
+        <p class="section-sub">
+          Developers scroll through thousands of log lines to find one real error, then guess whether it is a bug, a flaky test, or a broken config. Chatbots can explain errors, but they only see what you paste, never test their fix, and forget everything.
+        </p>
+
+        <div class="pain-cards">
+          <article class="card">
+            <h3 class="card-title"><span class="dot"></span>Noise buries the cause</h3>
+            <p class="card-desc">Framework boilerplate, dependency downloads, and runtime warnings flood logs, drowning the single line that matters.</p>
+          </article>
+          <article class="card">
+            <h3 class="card-title"><span class="dot"></span>Fixes are guessed, not proven</h3>
+            <p class="card-desc">Standard LLMs hallucinate obsolete imports or syntactically invalid patches because they have zero feedback loop.</p>
+          </article>
+          <article class="card">
+            <h3 class="card-title"><span class="dot"></span>Nothing is remembered</h3>
+            <p class="card-desc">Every time a recurrent flake or missing env occurs across team branches, developers debug it from scratch all over again.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- SECTION 3: HOW IT WORKS (PINNED SEQUENCE) -->
+      <div id="how-it-works">
+        <div class="pinned-container">
+          <div class="steps-sidebar" role="region" aria-label="How Trace-Card works step-by-step">
+            <div class="step-stepper" role="group" aria-label="Choose a Trace-Card step">
+              <button class="step-pill active" type="button" id="step-btn-1" aria-label="Step 1: CI fails" aria-current="step" onclick="goToStep(1)"></button>
+              <button class="step-pill" type="button" id="step-btn-2" aria-label="Step 2: Trim and mask" onclick="goToStep(2)"></button>
+              <button class="step-pill" type="button" id="step-btn-3" aria-label="Step 3: Gemini diagnoses" onclick="goToStep(3)"></button>
+              <button class="step-pill" type="button" id="step-btn-4" aria-label="Step 4: Verify the fix" onclick="goToStep(4)"></button>
+              <button class="step-pill" type="button" id="step-btn-5" aria-label="Step 5: Trace Card posted" onclick="goToStep(5)"></button>
+            </div>
+
+            <div class="step-content" aria-live="polite" aria-atomic="true">
+              <p class="step-number" id="step-counter">Step 1 of 5</p>
+              <h3 class="step-heading" id="step-title">1. CI fails.</h3>
+              <p class="step-text" id="step-desc">
+                The red slab tower appears in 3D space; the exact culprit frame flashes in electric cyan within the chaotic stack trace.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 4: THE TRACE CARD (INTERACTIVE 3D PRODUCT SHOT) -->
+      <section id="trace-card" aria-labelledby="card-title-head">
+        <span class="section-tag">Interactive Artifact</span>
+        <h2 id="card-title-head" class="section-title">The Trace Card</h2>
+        <p class="section-sub">
+          A high-confidence diagnosis with an executable patch, posted directly onto the pull request where you are already working.
+        </p>
+
+        <!-- Tab switcher for sample failures -->
+        <div class="tab-bar" role="tablist">
+          <button class="tab-btn active" type="button" role="tab" aria-selected="true" id="tab-bug" onclick="switchCardSample('bug')">Real bug</button>
+          <button class="tab-btn" type="button" role="tab" aria-selected="false" id="tab-dep" onclick="switchCardSample('dep')">Missing dependency</button>
+          <button class="tab-btn" type="button" role="tab" aria-selected="false" id="tab-flaky" onclick="switchCardSample('flaky')">Flaky test</button>
+        </div>
+
+        <div class="interactive-card-area">
+          <!-- 3D Card tilt container -->
+          <div class="card-viewport" id="card-viewport" aria-label="Interactive 3D Trace Card. Tilt with cursor or flip card.">
+            <div class="card-3d-wrapper" id="card-3d-wrapper">
+              
+              <!-- CARD FRONT (DIAGNOSIS) -->
+              <div class="card-face front" id="card-front-content">
+                <div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">
+                    <span class="card-header-badge" id="card-category-badge">Category: Real bug</span>
+                    <span id="card-confidence" style="font-family:var(--font-mono); font-size:0.8rem; color:var(--emerald);">Confidence: High</span>
+                  </div>
+                  <h4 style="font-size:1.35rem; font-weight:700; margin-bottom:0.75rem;" id="card-title">test_checkout_total failed</h4>
+                  <p style="color:var(--text-muted); font-size:0.92rem; line-height:1.5; margin-bottom:1rem;" id="card-root-cause">
+                    <strong>Root cause:</strong> Discount is applied after rounding in <code style="color:var(--cyan); font-family:var(--font-mono);">cart.py:42</code>
+                  </p>
+                </div>
+                <div>
+                  <div style="display:flex; justify-content:space-between; font-size:0.8rem; font-family:var(--font-mono); color:var(--text-muted); padding-top:1rem; border-top:1px solid rgba(255,255,255,0.08);">
+                    <span id="card-seen">Seen before: No</span>
+                    <span>Provider: Gemini</span>
+                  </div>
+                  <button class="btn btn-secondary" style="width:100%; margin-top:1rem;" onclick="flipCard()">
+                    Flip to see verified fix &rarr;
+                  </button>
+                </div>
+              </div>
+
+              <!-- CARD BACK (FIX) -->
+              <div class="card-face back" id="card-back-content">
+                <div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+                    <span class="card-header-badge" id="card-verification">&check; Sample: tests pass after patch</span>
+                    <span id="card-runner-status" style="font-family:var(--font-mono); font-size:0.8rem; color:var(--cyan);">Sample runner</span>
+                  </div>
+                  <h4 style="font-size:1.15rem; font-weight:700; margin-bottom:0.5rem;">Suggested Patch</h4>
+                  
+                  <div class="diff-block" id="card-diff-content">
+<span class="diff-red">- total = round(subtotal) * (1 - discount)</span>
+<span class="diff-green">+ subtotal = round(apply_discount(items))</span>
+<span class="diff-green">+ total = round(subtotal, 2)</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+                    <span class="btn btn-emerald" style="flex:1; font-size:0.8rem; pointer-events:none;">
+                      &check; Saved to known-fixes
+                    </span>
+                    <button class="btn btn-secondary" onclick="flipCard()">
+                      &larr; Front
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Description and actions -->
+          <div>
+            <span class="section-tag">Zero Context Switching</span>
+            <h3 style="font-size:1.8rem; font-weight:700; margin-bottom:1rem;">Every detail in the PR comment.</h3>
+            <p style="color:var(--text-muted); line-height:1.6; margin-bottom:1.5rem;">
+              The card folds into a clean GitHub Markdown comment. Developers don't leave their git workflow: they see the root cause, review the proven diff, and know the runner re-tested the code before recommending it.
+            </p>
+            <p class="card-sample-label">
+              &bull; Sample output. Real runs depend on your repo and test suite.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 5: WHAT MAKES IT DIFFERENT -->
+      <section id="difference" aria-labelledby="diff-title">
+        <span class="section-tag">Architectural Advantage</span>
+        <h2 id="diff-title" class="section-title">What makes it different</h2>
+        <p class="section-sub">
+          Other tools explain CI failures. Trace-Card verifies the fix on the runner and remembers it.
+        </p>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon-badge">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            </div>
+            <h3 style="font-size:1.25rem; font-weight:700; margin-bottom:0.5rem;">Verified fixes</h3>
+            <p style="color:var(--text-muted); font-size:0.95rem; line-height:1.6;">
+              The patch is applied on the runner and the failing command is re-run. Only passing fixes get the Verified badge.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-badge">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+            </div>
+            <h3 style="font-size:1.25rem; font-weight:700; margin-bottom:0.5rem;">Error memory</h3>
+            <p style="color:var(--text-muted); font-size:0.95rem; line-height:1.6;">
+              Confirmed fixes are fingerprinted and saved. The next time the same error appears, the answer is instant and needs no model call.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-badge">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            </div>
+            <h3 style="font-size:1.25rem; font-weight:700; margin-bottom:0.5rem;">Safe by design</h3>
+            <p style="color:var(--text-muted); font-size:0.95rem; line-height:1.6;">
+              Logs are trimmed and secrets are masked before anything leaves the runner. Nothing is pushed to your branch automatically.
+            </p>
+          </div>
+        </div>
+
+        <!-- Comparison strip -->
+        <div class="comparison-strip">
+          <div class="strip-item old">
+            <p class="strip-label">Typical Chatbot</p>
+            <p class="strip-val">Explains the error &bull; Guesses blind</p>
+          </div>
+          <div style="color:var(--cyan); font-weight:700; font-size:1.5rem;">&rarr;</div>
+          <div class="strip-item new">
+            <p class="strip-label">Trace-Card</p>
+            <p class="strip-val">Diagnoses &bull; Verifies on Runner &bull; Remembers</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 6: POWERED BY GEMINI -->
+      <section id="gemini" aria-labelledby="gemini-title">
+        <span class="section-tag">Intelligent Core</span>
+        <h2 id="gemini-title" class="section-title">
+          Gemini is the reasoning engine inside the workflow.
+        </h2>
+        <p class="section-sub">
+          Model names and features are configured in one file so they can follow Gemini updates seamlessly.
+        </p>
+
+        <div class="gemini-constellation-container">
+          <div class="gemini-node" tabindex="0">
+            <div class="gemini-node-header">
+              <span class="gemini-node-dot"></span>
+              <h3 class="gemini-node-title">Structured output</h3>
+            </div>
+            <p class="gemini-node-desc">Every diagnosis is schema-validated JSON, so the PR comment never breaks.</p>
+          </div>
+
+          <div class="gemini-node" tabindex="0">
+            <div class="gemini-node-header">
+              <span class="gemini-node-dot"></span>
+              <h3 class="gemini-node-title">System instructions</h3>
+            </div>
+            <p class="gemini-node-desc">Calibrated behavior: honest confidence, alternative causes, no guessing.</p>
+          </div>
+
+          <div class="gemini-node" tabindex="0">
+            <div class="gemini-node-header">
+              <span class="gemini-node-dot"></span>
+              <h3 class="gemini-node-title">Google Search grounding</h3>
+            </div>
+            <p class="gemini-node-desc">Version-specific and dependency errors are checked against current sources.</p>
+          </div>
+
+          <div class="gemini-node" tabindex="0">
+            <div class="gemini-node-header">
+              <span class="gemini-node-dot"></span>
+              <h3 class="gemini-node-title">Thinking controls</h3>
+            </div>
+            <p class="gemini-node-desc">More reasoning for hard failures, minimal for simple ones, balancing speed and quality.</p>
+          </div>
+
+          <div class="gemini-node" tabindex="0">
+            <div class="gemini-node-header">
+              <span class="gemini-node-dot"></span>
+              <h3 class="gemini-node-title">Token counting</h3>
+            </div>
+            <p class="gemini-node-desc">Huge logs are measured and trimmed before sending.</p>
+          </div>
+
+          <div class="gemini-node" tabindex="0">
+            <div class="gemini-node-header">
+              <span class="gemini-node-dot"></span>
+              <h3 class="gemini-node-title">Multi-turn context</h3>
+            </div>
+            <p class="gemini-node-desc">Follow-up analysis keeps the earlier diagnosis in context.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 7: DEMO VIDEO -->
+      <section id="demo" aria-labelledby="demo-title">
+        <div style="text-align:center; max-width:700px; margin:0 auto;">
+          <span class="section-tag">Interactive Preview</span>
+          <h2 id="demo-title" class="section-title" style="margin-left:auto; margin-right:auto;">See Trace-Card in action</h2>
+          <p class="section-sub" style="margin-left:auto; margin-right:auto;">
+            Push a broken commit, watch the build fail, see the Trace Card appear on GitHub in seconds.
+          </p>
+        </div>
+
+        <div class="monitor-frame" id="monitor-frame">
+          <button class="play-btn-circle" id="demo-play-btn" type="button" aria-expanded="false" onclick="playDemoPlaceholder()" aria-label="Show a sample run">
+            <svg class="play-icon" viewBox="0 0 24 24">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+          </button>
+          <p style="font-family:var(--font-mono); font-size:0.95rem; color:var(--text-main); margin-bottom:0.5rem;" id="demo-caption">
+            Sample run: push a broken commit, watch the build fail, see a Trace Card appear.
+          </p>
+          <p style="font-size:0.8rem; color:var(--text-muted);">
+            This is an interactive sample. No third-party video is loaded.
+          </p>
+          <ol class="demo-output" id="demo-output" aria-label="Sample CI run log" hidden>
+            <li>Trimmed 4,812 sample lines to 38 relevant frames</li>
+            <li>Masked 3 secret-like values locally</li>
+            <li>Gemini returned a structured diagnosis</li>
+            <li>Patch applied · test re-run passed</li>
+            <li>Trace Card ready for pull request review</li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- SECTION 8: INSTALL IN 3 STEPS -->
+      <section id="install" aria-labelledby="install-title">
+        <span class="section-tag">Quick Setup</span>
+        <h2 id="install-title" class="section-title">Add it to any repo in minutes.</h2>
+        <p class="section-sub">
+          Three lightweight steps to enable verified AI diagnoses across your team's CI pipelines.
+        </p>
+
+        <div class="install-steps-list">
+          <div class="install-step-item">
+            <div class="install-step-idx">1</div>
+            <div>
+              <h4 style="font-size:1.05rem; font-weight:700; margin-bottom:0.25rem;">Copy the workflow file</h4>
+              <p style="color:var(--text-muted); font-size:0.92rem;">Place the YAML workflow into your repository under <code style="color:var(--cyan); font-family:var(--font-mono);">.github/workflows/trace-card.yml</code></p>
+            </div>
+          </div>
+
+          <div class="install-step-item">
+            <div class="install-step-idx">2</div>
+            <div>
+              <h4 style="font-size:1.05rem; font-weight:700; margin-bottom:0.25rem;">Add GEMINI_API_KEY</h4>
+              <p style="color:var(--text-muted); font-size:0.92rem;">Save your Google Gemini API key as a GitHub Repository Secret.</p>
+            </div>
+          </div>
+
+          <div class="install-step-item">
+            <div class="install-step-idx">3</div>
+            <div>
+              <h4 style="font-size:1.05rem; font-weight:700; margin-bottom:0.25rem;">Push a commit</h4>
+              <p style="color:var(--text-muted); font-size:0.92rem;">If CI fails, a Trace Card automatically appears on your pull request with verified fixes.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="code-window">
+          <div class="code-topbar">
+            <span class="code-title">.github/workflows/ci.yml</span>
+            <button class="btn btn-secondary" style="padding:0.4rem 0.9rem; font-size:0.8rem;" id="copy-btn" onclick="copyWorkflowCode()">
+              Copy workflow
+            </button>
+          </div>
+          <pre class="code-pre" id="workflow-code">name: CI
+on: [pull_request]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npm test 2&gt;&amp;1 | tee test.log
+      - name: Trace-Card
+        if: failure()
+        run: node trace-card.js test.log
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}</pre>
+        </div>
+        <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.75rem; font-family:var(--font-mono);">
+          * Note: Secrets are not available to pull requests from forks for security isolation.
+        </p>
+      </section>
+
+      <!-- SECTION 9: ROADMAP -->
+      <section id="roadmap" aria-labelledby="roadmap-title">
+        <span class="section-tag">Future Path</span>
+        <h2 id="roadmap-title" class="section-title">Roadmap</h2>
+        <p class="section-sub">From a hackathon action to universal continuous fix automation.</p>
+
+        <div class="roadmap-timeline">
+          <div class="roadmap-node active-now">
+            <span class="roadmap-status-pill">&check; Now Built</span>
+            <h4 style="font-size:1.15rem; font-weight:700; margin-bottom:0.4rem;">GitHub Action</h4>
+            <p style="color:var(--text-muted); font-size:0.9rem;">Core CI runner verification, Gemini structured diagnoses, and PR comments.</p>
+          </div>
+
+          <div class="roadmap-node">
+            <span class="roadmap-status-pill">Next</span>
+            <h4 style="font-size:1.15rem; font-weight:700; margin-bottom:0.4rem;">MCP server for AI agents</h4>
+            <p style="color:var(--text-muted); font-size:0.9rem;">Expose Trace-Card memory and verification tools to Claude, Codex, Cursor, and Antigravity.</p>
+          </div>
+
+          <div class="roadmap-node">
+            <span class="roadmap-status-pill">Next</span>
+            <h4 style="font-size:1.15rem; font-weight:700; margin-bottom:0.4rem;">VS Code extension</h4>
+            <p style="color:var(--text-muted); font-size:0.9rem;">Local terminal stack-trace diagnosis with one-click editor diff previews.</p>
+          </div>
+
+          <div class="roadmap-node">
+            <span class="roadmap-status-pill">Later</span>
+            <h4 style="font-size:1.15rem; font-weight:700; margin-bottom:0.4rem;">GitHub Marketplace listing</h4>
+            <p style="color:var(--text-muted); font-size:0.9rem;">One-click install with pre-built actions and organization-wide fix caches.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="final-cta" aria-labelledby="final-cta-title">
+        <div>
+          <span class="section-tag">Bring the signal back to your pull request</span>
+          <h2 id="final-cta-title">Put your first Trace Card on the next failed build.</h2>
+          <p>Start with a trace in the workspace, review the masked payload, and decide what to send.</p>
+        </div>
+        <div class="final-cta-actions">
+          <a href="/workspace" class="btn btn-primary">Open the workspace</a>
+          <a href="#demo" class="btn btn-secondary">View the sample run</a>
+        </div>
+      </section>
+
+      <!-- SECTION 10: TEAM & FOOTER -->
+      <footer>
+        <div class="footer-grid">
+          <div>
+            <div class="brand" style="margin-bottom:1rem;">
+              <svg class="brand-icon" viewBox="0 0 24 24">
+                <rect x="3" y="4" width="18" height="16" rx="3"></rect>
+                <line x1="7" y1="9" x2="17" y2="9"></line>
+                <line x1="7" y1="13" x2="13" y2="13"></line>
+              </svg>
+              Trace-Card
+            </div>
+            <p style="margin-bottom:1rem; max-width:380px;">
+              Built for the MLH Hackathon with the Google Gemini API.
+            </p>
+            <p style="font-size:0.8rem; color:var(--text-muted); font-family:var(--font-mono);">
+              Trace-Card suggests fixes. Always review changes before merging.
+            </p>
+          </div>
+
+          <div>
+            <h5 style="color:var(--text-main); font-weight:700; margin-bottom:0.75rem;">Hackathon Team</h5>
+            <ul style="list-style:none; display:flex; flex-direction:column; gap:0.4rem; font-size:0.9rem;">
+              <li>[Team name] &bull; Developer tooling</li>
+              <li>[Team name] &bull; Gemini integration</li>
+              <li>[Team name] &bull; Product and design</li>
+            </ul>
+          </div>
+
+          <div>
+            <h5 style="color:var(--text-main); font-weight:700; margin-bottom:0.75rem;">Project Links</h5>
+            <ul style="list-style:none; display:flex; flex-direction:column; gap:0.4rem; font-size:0.9rem;">
+              <li><a href="/workspace" class="nav-link">Try the workspace</a></li>
+              <li><a href="#how-it-works" class="nav-link">How it works</a></li>
+              <li><a href="#demo" class="nav-link">Sample run</a></li>
+            </ul>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- -------------------------------------------------------------
+       INTERACTIVE DOT GRID BACKGROUND
+       Based on Dot Grid BG by the supplied Framer module.
+       ------------------------------------------------------------- -->
+  <script>
+    (() => {
+      const canvas = document.getElementById('dot-grid-canvas');
+      const container = document.getElementById('dot-grid-canvas-container');
+      const ctx = canvas && canvas.getContext('2d', { alpha: true });
+      if (!canvas || !container || !ctx) return;
+
+      const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const config = {
+        dotColor: { r: 34, g: 211, b: 238 },
+        dotSize: 1.8,
+        dotSpacing: 34,
+        orbitSpeed: 1.3,
+        impactRadius: 128,
+        scaleOnHover: 1.75,
+        enableRevolve: true
+      };
+      const pointer = { x: -9999, y: -9999, hovering: false, leftAt: 0 };
+      let dots = [];
+      let width = 0;
+      let height = 0;
+      let pixelRatio = 1;
+      let previousTime = 0;
+      let angle = 0;
+      let frame = 0;
+      let running = false;
+
+      const smoothstep = (value) => {
+        const t = Math.max(0, Math.min(1, value));
+        return t * t * (3 - 2 * t);
+      };
+
+      function buildDots() {
+        dots = [];
+        const columns = Math.ceil(width / config.dotSpacing) + 2;
+        const rows = Math.ceil(height / config.dotSpacing) + 2;
+        for (let row = 0; row < rows; row += 1) {
+          for (let column = 0; column < columns; column += 1) {
+            dots.push({
+              x: column * config.dotSpacing,
+              y: row * config.dotSpacing,
+              inclination: Math.random() * Math.PI,
+              ascension: Math.random() * Math.PI * 2,
+              phase: Math.random() * Math.PI * 2,
+              speed: .7 + Math.random() * .6
+            });
+          }
+        }
+      }
+
+      function resize() {
+        const bounds = container.getBoundingClientRect();
+        width = bounds.width;
+        height = bounds.height;
+        pixelRatio = Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1 : 1.25);
+        canvas.width = Math.round(width * pixelRatio);
+        canvas.height = Math.round(height * pixelRatio);
+        ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        buildDots();
+        draw(performance.now());
+      }
+
+      function draw(time) {
+        const elapsed = previousTime ? Math.min((time - previousTime) / 1000, .05) : 0;
+        previousTime = time;
+        angle += config.orbitSpeed * elapsed;
+        ctx.clearRect(0, 0, width, height);
+
+        const decay = pointer.hovering
+          ? 1
+          : smoothstep(Math.max(0, 1 - Math.max(0, time - pointer.leftAt) / 1000 * 1.5));
+        const { r, g, b } = config.dotColor;
+
+        for (const dot of dots) {
+          const dx = dot.x - pointer.x;
+          const dy = dot.y - pointer.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const affected = distance < config.impactRadius && distance > 0;
+          let x = dot.x;
+          let y = dot.y;
+          let scale = 1;
+          let alpha = .3;
+
+          if (affected) {
+            const influence = smoothstep(1 - distance / config.impactRadius) * decay;
+            if (config.enableRevolve) {
+              const orbitRadius = (1 - distance / config.impactRadius) * config.dotSpacing * .7 * influence;
+              const theta = angle * dot.speed + dot.phase;
+              const cosA = Math.cos(dot.ascension);
+              const sinA = Math.sin(dot.ascension);
+              const cosI = Math.cos(dot.inclination);
+              const sinI = Math.sin(dot.inclination);
+              const localX = Math.cos(theta);
+              const localY = Math.sin(theta) * cosI;
+              const depth = Math.sin(theta) * sinI;
+              x += (localX * cosA - localY * sinA) * orbitRadius;
+              y += (localX * sinA + localY * cosA) * orbitRadius;
+              const depthScale = .75 + .25 * ((depth + 1) * .5);
+              scale = (1 + (config.scaleOnHover - 1) * influence) * depthScale;
+              alpha = (.3 + .7 * influence) * depthScale;
+            } else {
+              scale = 1 + (config.scaleOnHover - 1) * influence;
+              alpha = .3 + .7 * influence;
+            }
+          }
+
+          ctx.beginPath();
+          ctx.arc(x, y, config.dotSize / 2 * scale, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+          ctx.fill();
+        }
+      }
+
+      function animate(time) {
+        if (!running || document.hidden) return;
+        draw(time);
+        frame = window.requestAnimationFrame(animate);
+      }
+
+      function start() {
+        if (document.hidden) return;
+        if (motionPreference.matches) {
+          draw(performance.now());
+          return;
+        }
+        if (running) return;
+        running = true;
+        previousTime = 0;
+        frame = window.requestAnimationFrame(animate);
+      }
+
+      function stop() {
+        running = false;
+        window.cancelAnimationFrame(frame);
+      }
+
+      function updatePointer(event) {
+        pointer.x = event.clientX;
+        pointer.y = event.clientY;
+        pointer.hovering = true;
+      }
+
+      function clearPointer() {
+        pointer.x = -9999;
+        pointer.y = -9999;
+        pointer.hovering = false;
+        pointer.leftAt = performance.now();
+      }
+
+      const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+      observer?.observe(container);
+      window.addEventListener('resize', resize, { passive: true });
+      document.addEventListener('pointermove', updatePointer, { passive: true });
+      document.documentElement.addEventListener('mouseleave', clearPointer);
+      window.addEventListener('blur', clearPointer);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stop();
+        else start();
+      });
+      motionPreference.addEventListener?.('change', () => {
+        if (motionPreference.matches) {
+          stop();
+          draw(performance.now());
+        } else start();
+      });
+      resize();
+      start();
+    })();
+  </script>
+
+  <!-- -------------------------------------------------------------
+       THREE.JS SCRIPT & PROCEDURAL 3D SCENE
+       ------------------------------------------------------------- -->
+  <script>
+    /* Graceful fallback when WebGL, motion or the pinned CDN build is unavailable. */
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let isThreeSupported = !prefersReducedMotion && !window.__traceThreeFailed && !!window.THREE;
+    try {
+      const testCanvas = document.createElement('canvas');
+      isThreeSupported = isThreeSupported && !!(window.WebGLRenderingContext && (testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl')));
+    } catch (e) {
+      isThreeSupported = false;
+    }
+
+    function disableThree() {
+      isThreeSupported = false;
+      const loader = document.getElementById('loader');
+      const container = document.getElementById('webgl-canvas-container');
+      if (loader) loader.remove();
+      if (container) container.style.display = 'none';
+    }
+
+    if (!isThreeSupported) {
+      disableThree();
+    }
+
+    /* -------------------------------------------------------------
+       SCENE SETUP
+       ------------------------------------------------------------- */
+    const canvas = document.getElementById('webgl-canvas');
+    let renderer, scene, camera;
+    let slabGroup, culpritSlab, particles, geminiCore, orbitGroup;
+    let cardMesh, verificationRing, verifiedStamp;
+
+    const mouse = { x: 0, y: 0, targetX: 0, targetY: 0 };
+    let scrollProgress = 0;
+    let targetScrollProgress = 0;
+    let isVisible = !document.hidden;
+    let animationFrameId = 0;
+    let sceneOffsetX = 0;
+    let sceneScale = 1;
+
+    const clamp01 = (value) => Math.min(Math.max(value, 0), 1);
+    const smoothstep = (value) => { const t = clamp01(value); return t * t * (3 - 2 * t); };
+
+    // Helpers to create CanvasTextures with crisp text
+    function makeLogTexture(text, isError = false, isCulprit = false) {
+      const cv = document.createElement('canvas');
+      cv.width = 1024;
+      cv.height = 128;
+      const ctx = cv.getContext('2d');
+
+      ctx.fillStyle = isCulprit ? '#072430' : (isError ? '#230d0d' : '#0c111c');
+      ctx.fillRect(0, 0, cv.width, cv.height);
+
+      ctx.strokeStyle = isCulprit ? '#22d3ee' : (isError ? '#f87171' : 'rgba(255,255,255,0.12)');
+      ctx.lineWidth = 6;
+      ctx.strokeRect(0, 0, cv.width, cv.height);
+
+      ctx.font = 'bold 36px monospace';
+      ctx.fillStyle = isCulprit ? '#22d3ee' : (isError ? '#f87171' : '#94a3b8');
+      ctx.fillText(text, 40, 78);
+
+      const tex = new THREE.CanvasTexture(cv);
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    function makeTraceCardTexture() {
+      const cv = document.createElement('canvas');
+      cv.width = 1024;
+      cv.height = 640;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#0b1118';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.strokeStyle = 'rgba(34,211,238,.8)';
+      ctx.lineWidth = 5;
+      ctx.strokeRect(12, 12, cv.width - 24, cv.height - 24);
+      ctx.fillStyle = '#22d3ee';
+      ctx.font = '600 30px monospace';
+      ctx.fillText('TRACE CARD  /  SAMPLE OUTPUT', 48, 66);
+      ctx.fillStyle = '#e8edf2';
+      ctx.font = '600 44px sans-serif';
+      ctx.fillText('test_checkout_total failed', 48, 142);
+      ctx.fillStyle = '#8b97a6';
+      ctx.font = '24px monospace';
+      ctx.fillText('ROOT CAUSE  ·  cart.py:42', 48, 202);
+      ctx.fillStyle = '#d6e0ea';
+      ctx.font = '26px sans-serif';
+      ctx.fillText('Discount is applied after rounding.', 48, 252);
+      ctx.fillStyle = '#f87171';
+      ctx.font = '24px monospace';
+      ctx.fillText('− total = round(subtotal) * discount', 48, 352);
+      ctx.fillStyle = '#34d399';
+      ctx.fillText('+ total = round(apply_discount(items), 2)', 48, 398);
+      ctx.fillStyle = '#8b97a6';
+      ctx.font = '22px monospace';
+      ctx.fillText('CONFIDENCE  HIGH  ·  PATCH REVIEW REQUIRED', 48, 492);
+      const texture = new THREE.CanvasTexture(cv);
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    function makeVerifiedStamp() {
+      const cv = document.createElement('canvas');
+      cv.width = 512;
+      cv.height = 128;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = 'rgba(7,24,18,.94)';
+      ctx.fillRect(4, 4, 504, 120);
+      ctx.strokeStyle = '#34d399';
+      ctx.lineWidth = 5;
+      ctx.strokeRect(6, 6, 500, 116);
+      ctx.fillStyle = '#34d399';
+      ctx.font = '700 58px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('✓ VERIFIED', 256, 65);
+      const texture = new THREE.CanvasTexture(cv);
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    function layoutScene() {
+      const width = window.innerWidth;
+      sceneOffsetX = width < 640 ? 0.25 : width < 900 ? 3.1 : 4.8;
+      sceneScale = width < 640 ? 0.68 : width < 900 ? 0.82 : 1;
+      if (slabGroup) {
+        slabGroup.position.x = sceneOffsetX;
+        slabGroup.scale.setScalar(sceneScale);
+      }
+      if (cardMesh) cardMesh.position.x = sceneOffsetX;
+      if (verificationRing) verificationRing.position.x = sceneOffsetX;
+      if (orbitGroup) orbitGroup.position.x = sceneOffsetX;
+    }
+
+    function initThree() {
+      if (!isThreeSupported) return;
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({
+        canvas: canvas,
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance'
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.5 : 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x07090d, 0);
+
+      // Scene
+      scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x07090d, 0.025);
+
+      // Camera
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(0, 0, 20);
+      layoutScene();
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+      scene.add(ambientLight);
+
+      const cyanPoint = new THREE.PointLight(0x22d3ee, 2.8, 35);
+      cyanPoint.position.set(sceneOffsetX, 2, 8);
+      scene.add(cyanPoint);
+
+      const redPoint = new THREE.PointLight(0xf87171, 1.8, 25);
+      redPoint.position.set(sceneOffsetX - 6, -4, 5);
+      scene.add(redPoint);
+
+      // Grid Floor
+      const grid = new THREE.GridHelper(60, 40, 0x22d3ee, 0x1e293b);
+      grid.position.y = -8;
+      grid.material.opacity = 0.22;
+      grid.material.transparent = true;
+      scene.add(grid);
+
+      // Dust / Ambient Particles
+      const particleGeo = new THREE.BufferGeometry();
+      const pCount = window.innerWidth < 768 ? 160 : 480;
+      const posArray = new Float32Array(pCount * 3);
+      for (let i = 0; i < pCount * 3; i += 3) {
+        posArray[i] = sceneOffsetX + (Math.random() - 0.5) * 30;
+        posArray[i+1] = (Math.random() - 0.5) * 36;
+        posArray[i+2] = (Math.random() - 0.5) * 30;
+      }
+      particleGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+      const particleMat = new THREE.PointsMaterial({
+        size: 0.12,
+        color: 0x22d3ee,
+        transparent: true,
+        opacity: 0.45,
+        blending: THREE.AdditiveBlending
+      });
+      particles = new THREE.Points(particleGeo, particleMat);
+      scene.add(particles);
+
+      // Build Log Slabs Tower
+      slabGroup = new THREE.Group();
+      scene.add(slabGroup);
+
+      const logLines = [
+        "FAIL src/cart.test.ts > checkout discount",
+        "npm ERR! code ELIFECYCLE",
+        "AssertionError: expected 42 to equal 38",
+        "at calculateTotal (src/cart.py:42:15)",
+        "Process completed with exit code 1",
+        "WARN [runner] node 18 memory exceeded 85%",
+        "DEBUG token verified with scope [repo, write]"
+      ];
+
+      const slabLimit = window.innerWidth < 768 ? 4 : 7;
+      for (let i = -slabLimit; i <= slabLimit; i++) {
+        const isCulprit = (i === 0);
+        const isErr = Math.abs(i) % 2 === 1;
+        const text = isCulprit ? ">> CULPRIT: cart.py:42: Discount rounding error <<" : logLines[(i + 7) % logLines.length];
+
+        const geo = new THREE.BoxGeometry(6.4, 0.65, 0.15);
+        const mat = new THREE.MeshStandardMaterial({
+          map: makeLogTexture(text, isErr, isCulprit),
+          roughness: 0.3,
+          metalness: 0.2,
+          emissive: isCulprit ? 0x22d3ee : 0x000000,
+          emissiveIntensity: isCulprit ? 0.35 : 0
+        });
+
+        const slab = new THREE.Mesh(geo, mat);
+        slab.position.set((Math.random() - 0.5) * 1.5, i * 1.1, (Math.random() - 0.5) * 2.5);
+        slab.rotation.y = (Math.random() - 0.5) * 0.4;
+        slab.userData.origin = slab.position.clone();
+        slab.userData.scatterX = i % 2 === 0 ? 1 : -1;
+        slab.userData.scatterY = i < 0 ? -1 : 1;
+        slabGroup.add(slab);
+
+        if (isCulprit) culpritSlab = slab;
+      }
+
+      // The culprit expands into a legible Trace Card as the pinned story advances.
+      const cardTexture = makeTraceCardTexture();
+      const cardEdge = new THREE.MeshPhysicalMaterial({ color: 0x0d1d28, metalness: 0.35, roughness: 0.22, clearcoat: 0.9, transparent: true, opacity: 0 });
+      const cardFace = new THREE.MeshPhysicalMaterial({ map: cardTexture, color: 0xffffff, metalness: 0.2, roughness: 0.28, clearcoat: 0.85, transparent: true, opacity: 0 });
+      const cardBack = new THREE.MeshPhysicalMaterial({ map: cardTexture, color: 0xb6d4df, metalness: 0.3, roughness: 0.35, transparent: true, opacity: 0 });
+      cardMesh = new THREE.Mesh(new THREE.BoxGeometry(5.8, 3.65, 0.2), [cardEdge, cardEdge, cardEdge, cardEdge, cardFace, cardBack]);
+      cardMesh.position.set(sceneOffsetX, 0, 0.25);
+      cardMesh.scale.set(1, 0.17, 0.55);
+      cardMesh.rotation.y = -0.42;
+      scene.add(cardMesh);
+
+      const stampMaterial = new THREE.MeshBasicMaterial({ map: makeVerifiedStamp(), transparent: true, opacity: 0, depthWrite: false });
+      verifiedStamp = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.5), stampMaterial);
+      verifiedStamp.position.set(1.45, -1.32, 0.12);
+      verifiedStamp.scale.setScalar(0.001);
+      cardMesh.add(verifiedStamp);
+
+      const verificationMaterial = new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.8 });
+      verificationRing = new THREE.Mesh(new THREE.TorusGeometry(3.7, 0.035, 12, 100), verificationMaterial);
+      verificationRing.position.set(sceneOffsetX, 0, 0.2);
+      scene.add(verificationRing);
+
+      // Gemini Core Constellation
+      orbitGroup = new THREE.Group();
+      orbitGroup.position.set(sceneOffsetX, 0, -50); // hidden initially
+      scene.add(orbitGroup);
+
+      const coreGeo = new THREE.SphereGeometry(1.4, 32, 32);
+      const coreMat = new THREE.MeshStandardMaterial({
+        color: 0x22d3ee,
+        emissive: 0x22d3ee,
+        emissiveIntensity: 0.8,
+        wireframe: true
+      });
+      geminiCore = new THREE.Mesh(coreGeo, coreMat);
+      orbitGroup.add(geminiCore);
+
+      // Rings around Gemini
+      const ringGeo = new THREE.TorusGeometry(3.2, 0.04, 16, 100);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.6 });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = Math.PI / 3;
+      orbitGroup.add(ring);
+      layoutScene();
+
+      // Loading complete
+      setTimeout(() => {
+        const loader = document.getElementById('loader');
+        if (loader) {
+          loader.style.opacity = '0';
+          setTimeout(() => loader.remove(), 600);
+        }
+      }, 500);
+
+      window.addEventListener('resize', onWindowResize, { passive: true });
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('visibilitychange', () => {
+        isVisible = !document.hidden;
+        if (!isVisible && animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = 0;
+        } else if (isVisible) {
+          startAnimation();
+        }
+      });
+      handlePinnedStepScroll();
+      startAnimation();
+    }
+
+    function onWindowResize() {
+      if (!camera || !renderer) return;
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.5 : 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      layoutScene();
+    }
+
+    function onMouseMove(e) {
+      if (window.innerWidth < 768) return;
+      mouse.targetX = (e.clientX / window.innerWidth - 0.5) * 2;
+      mouse.targetY = -(e.clientY / window.innerHeight - 0.5) * 2;
+    }
+
+    // The pinned story, not total page length, drives the 3D transformation.
+    window.addEventListener('scroll', handlePinnedStepScroll, { passive: true });
+
+    // Pinned section step tracker
+    function handlePinnedStepScroll() {
+      const section = document.getElementById('how-it-works');
+      if (!section) return;
+      const rect = section.getBoundingClientRect();
+      const storyLength = Math.max(section.offsetHeight - window.innerHeight, 1);
+      const progress = clamp01(-rect.top / storyLength);
+      targetScrollProgress = progress;
+      const canvasContainer = document.getElementById('webgl-canvas-container');
+      if (canvasContainer) canvasContainer.style.opacity = String(clamp01(rect.bottom / (window.innerHeight * 0.55)));
+      
+      let step = 1;
+      if (progress >= 0.8) step = 5;
+      else if (progress >= 0.6) step = 4;
+      else if (progress >= 0.4) step = 3;
+      else if (progress >= 0.2) step = 2;
+      
+      updateStepUI(step);
+    }
+
+    const stepData = {
+      1: {
+        title: "1. CI fails.",
+        desc: "The red slab tower appears in 3D space; the exact culprit frame flashes in electric cyan within the chaotic stack trace."
+      },
+      2: {
+        title: "2. Trim and mask.",
+        desc: "Framework frames dissolve into particles; secret-looking strings and auth tokens are visibly replaced by '****' on the runner."
+      },
+      3: {
+        title: "3. Gemini diagnoses.",
+        desc: "The remaining frames stream into a glowing core labeled 'Gemini'; schema-validated JSON materializes with root cause and confidence."
+      },
+      4: {
+        title: "4. Verify the fix.",
+        desc: "A patch slab slides into place, the test suite re-runs in an isolated subprocess, and the status indicator turns emerald green."
+      },
+      5: {
+        title: "5. Trace Card posted.",
+        desc: "Everything folds into one glass card, a green Verified stamp snaps on, and the card is placed into a mock pull request comment."
+      }
+    };
+
+    function updateStepUI(step) {
+      for (let i = 1; i <= 5; i++) {
+        const btn = document.getElementById(`step-btn-${i}`);
+        if (btn) {
+          btn.classList.toggle('active', i === step);
+          if (i === step) btn.setAttribute('aria-current', 'step');
+          else btn.removeAttribute('aria-current');
+        }
+      }
+      const counter = document.getElementById('step-counter');
+      const title = document.getElementById('step-title');
+      const desc = document.getElementById('step-desc');
+      if (counter && title && desc && stepData[step]) {
+        counter.textContent = `Step ${step} of 5`;
+        title.textContent = stepData[step].title;
+        desc.textContent = stepData[step].desc;
+      }
+    }
+
+    function goToStep(step) {
+      const section = document.getElementById('how-it-works');
+      if (!section) return;
+      const totalH = section.offsetHeight - window.innerHeight;
+      const targetY = section.offsetTop + (totalH * ((step - 1) / 4));
+      window.scrollTo({ top: targetY, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+    }
+
+    // Request one frame at a time so rendering truly pauses for hidden tabs.
+    function startAnimation() {
+      if (!animationFrameId && isVisible && isThreeSupported) animationFrameId = requestAnimationFrame(animate);
+    }
+
+    function animate() {
+      animationFrameId = 0;
+      if (!isVisible || !isThreeSupported || !renderer || !camera) return;
+
+      mouse.x += (mouse.targetX - mouse.x) * 0.05;
+      mouse.y += (mouse.targetY - mouse.y) * 0.05;
+      scrollProgress += (targetScrollProgress - scrollProgress) * 0.08;
+      const progress = scrollProgress;
+      const now = performance.now();
+      const scatter = smoothstep((progress - 0.16) / 0.24);
+      const cardMorph = smoothstep((progress - 0.57) / 0.24);
+      const verification = smoothstep((progress - 0.78) / 0.14);
+
+      if (particles) particles.rotation.y += 0.0005;
+
+      if (slabGroup) {
+        slabGroup.rotation.y = 0.08 * Math.sin(now * 0.0005) + progress * 1.2;
+        slabGroup.position.y = -smoothstep((progress - 0.28) / 0.62) * 0.7;
+        slabGroup.children.forEach((slab) => {
+          if (slab === culpritSlab) return;
+          const origin = slab.userData.origin;
+          slab.position.x = origin.x + slab.userData.scatterX * scatter * 5.5;
+          slab.position.y = origin.y + slab.userData.scatterY * scatter * (2.5 + Math.abs(origin.y) * 0.22);
+          slab.position.z = origin.z - scatter * 2;
+          slab.material.opacity = 1 - scatter * 0.96;
+          slab.material.transparent = scatter > 0.01;
+        });
+        if (culpritSlab) {
+          const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+          culpritSlab.material.emissiveIntensity = 0.25 + pulse * 0.65;
+          culpritSlab.material.opacity = 1 - cardMorph;
+          culpritSlab.material.transparent = cardMorph > 0.01;
+        }
+      }
+
+      if (orbitGroup && geminiCore) {
+        geminiCore.rotation.y += 0.009;
+        geminiCore.rotation.x += 0.004;
+        orbitGroup.rotation.z += 0.003;
+        const geminiPhase = smoothstep((progress - 0.37) / 0.2) * (1 - smoothstep((progress - 0.59) / 0.08));
+        orbitGroup.position.z = -55 + geminiPhase * 53;
+        orbitGroup.scale.setScalar(0.45 + geminiPhase * 0.55);
+      }
+
+      if (cardMesh) {
+        cardMesh.visible = cardMorph > 0.002;
+        cardMesh.scale.set(sceneScale, sceneScale * (0.17 + cardMorph * 0.83), sceneScale * (0.55 + cardMorph * 0.45));
+        cardMesh.rotation.y = -0.42 * (1 - cardMorph);
+        cardMesh.rotation.x = Math.sin(now * 0.00045) * 0.025 * (1 - verification);
+        cardMesh.position.y = -0.12 + cardMorph * 0.12;
+        cardMesh.material.forEach((material) => { material.opacity = cardMorph; });
+      }
+
+      if (verifiedStamp) {
+        const snap = verification > 0 ? Math.min(1.08, verification * 1.18) : 0.001;
+        verifiedStamp.scale.setScalar(snap);
+        verifiedStamp.material.opacity = verification;
+      }
+
+      if (verificationRing) {
+        const cyan = new THREE.Color(0x22d3ee);
+        const emerald = new THREE.Color(0x34d399);
+        verificationRing.material.color.copy(cyan.lerp(emerald, verification));
+        verificationRing.material.opacity = 0.75 * (1 - cardMorph * 0.25);
+        verificationRing.rotation.z += 0.002 + verification * 0.004;
+        verificationRing.scale.setScalar(0.78 + cardMorph * 0.22);
+      }
+
+      camera.position.x = sceneOffsetX + mouse.x * (window.innerWidth < 768 ? 0.15 : 0.55);
+      camera.position.y = mouse.y * 0.35;
+      camera.lookAt(sceneOffsetX, 0, 0);
+      renderer.render(scene, camera);
+      animationFrameId = requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (!isThreeSupported) return;
+      try {
+        initThree();
+      } catch (error) {
+        console.warn('TraceCard 3D scene unavailable; showing the accessible page fallback.', error);
+        disableThree();
+      }
+    }, { once: true });
+
+    /* -------------------------------------------------------------
+       INTERACTIVE TRACE CARD (DOM 3D TILT & FLIP)
+       ------------------------------------------------------------- */
+    const cardViewport = document.getElementById('card-viewport');
+    const cardWrapper = document.getElementById('card-3d-wrapper');
+
+    function flipCard() {
+      if (cardWrapper) {
+        cardWrapper.classList.toggle('flipped');
+      }
+    }
+
+    if (cardViewport && cardWrapper) {
+      cardViewport.addEventListener('mousemove', (e) => {
+        const rect = cardViewport.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const rotateX = ((y - centerY) / centerY) * -12;
+        const rotateY = ((x - centerX) / centerX) * 14;
+        
+        const isFlipped = cardWrapper.classList.contains('flipped');
+        cardWrapper.style.transform = `rotateX(${rotateX}deg) rotateY(${isFlipped ? rotateY + 180 : rotateY}deg)`;
+      });
+
+      cardViewport.addEventListener('mouseleave', () => {
+        const isFlipped = cardWrapper.classList.contains('flipped');
+        cardWrapper.style.transform = isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)';
+      });
+    }
+
+    // Sample failure switcher
+    const sampleCards = {
+      bug: {
+        category: "Category: Real bug",
+        confidence: "Confidence: High",
+        verification: "✓ Sample: tests pass after patch",
+        runnerStatus: "Sample runner passed",
+        title: "test_checkout_total failed",
+        cause: "<strong>Root cause:</strong> Discount is applied after rounding in <code style='color:var(--cyan); font-family:var(--font-mono);'>cart.py:42</code>",
+        seen: "Seen before: No",
+        diff: `<span class="diff-red">- total = round(subtotal) * (1 - discount)</span>\n<span class="diff-green">+ subtotal = round(apply_discount(items))</span>\n<span class="diff-green">+ total = round(subtotal, 2)</span>`
+      },
+      dep: {
+        category: "Category: Missing dependency",
+        confidence: "Confidence: High",
+        verification: "✓ Sample: dependency resolved",
+        runnerStatus: "Sample runner passed",
+        title: "ModuleNotFoundError: 'redis'",
+        cause: "<strong>Root cause:</strong> Celery task imported redis client without declaration in <code style='color:var(--cyan); font-family:var(--font-mono);'>pyproject.toml:18</code>",
+        seen: "Seen before: Yes (cached)",
+        diff: `<span class="diff-green">+ redis = "^5.0.1"</span>\n<span class="diff-green">+ poetry lock --no-update &amp;&amp; poetry install</span>`
+      },
+      flaky: {
+        category: "Category: Flaky Test",
+        confidence: "Confidence: Medium",
+        verification: "Unverified: retry or quarantine advised",
+        runnerStatus: "Review recommended",
+        title: "test_sync_webhook timeout (5000ms)",
+        cause: "<strong>Suggestion:</strong> Retry or quarantine. Socket race condition triggered by delayed localhost teardown.",
+        seen: "Seen before: 3 times in branch 'staging'",
+        diff: `<span class="diff-red">- await page.waitForTimeout(5000)</span>\n<span class="diff-green">+ await page.waitForSelector('[data-testid=\"ready\"]', { state: 'attached' })</span>`
+      }
+    };
+
+    function switchCardSample(type) {
+      document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+      const activeBtn = document.getElementById(`tab-${type}`);
+      if (activeBtn) { activeBtn.classList.add('active'); activeBtn.setAttribute('aria-selected', 'true'); }
+
+      const data = sampleCards[type];
+      if (!data) return;
+
+      document.getElementById('card-category-badge').textContent = data.category;
+      document.getElementById('card-title').textContent = data.title;
+      document.getElementById('card-root-cause').innerHTML = data.cause;
+      document.getElementById('card-seen').textContent = data.seen;
+      document.getElementById('card-confidence').textContent = data.confidence;
+      document.getElementById('card-verification').textContent = data.verification;
+      document.getElementById('card-runner-status').textContent = data.runnerStatus;
+      document.getElementById('card-diff-content').innerHTML = data.diff;
+    }
+
+    // Copy workflow code button
+    function copyWorkflowCode() {
+      const code = document.getElementById('workflow-code').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        const btn = document.getElementById('copy-btn');
+        btn.textContent = '✓ Copied!';
+        btn.style.borderColor = 'var(--emerald)';
+        btn.style.color = 'var(--emerald)';
+        setTimeout(() => {
+          btn.textContent = 'Copy workflow';
+          btn.style.borderColor = '';
+          btn.style.color = '';
+        }, 2200);
+      });
+    }
+
+    // Demo video placeholder
+    function playDemoPlaceholder() {
+      const caption = document.getElementById('demo-caption');
+      const btn = document.getElementById('demo-play-btn');
+      const output = document.getElementById('demo-output');
+      const showing = output.hidden;
+      output.hidden = !showing;
+      btn.setAttribute('aria-expanded', String(showing));
+      btn.setAttribute('aria-label', showing ? 'Hide the sample run' : 'Show a sample run');
+      caption.textContent = showing ? 'Sample run preview: the failing frame becomes a reviewable Trace Card.' : 'Sample run: push a broken commit, watch the build fail, see a Trace Card appear.';
+    }
+  </script>
+</body>
+</html>
