@@ -542,6 +542,18 @@ export default function TraceCardApp() {
   const characterCount = trace.length.toLocaleString();
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      if ("scrollRestoration" in window.history) {
+        window.history.scrollRestoration = "manual";
+      }
+      // If the browser loaded with #workspace or scroll restoration, boot directly at the top Hero section
+      if (!window.location.hash || window.location.hash === "#workspace") {
+        if (window.location.hash === "#workspace") {
+          window.history.replaceState(null, "", window.location.pathname);
+        }
+        window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
+      }
+    }
     try {
       const rawHistory = localStorage.getItem(HISTORY_KEY);
       if (rawHistory) setHistory((JSON.parse(rawHistory) as SavedReport[]).filter((item) => Date.now() - item.createdAt < MAX_HISTORY_AGE));
@@ -809,7 +821,24 @@ export default function TraceCardApp() {
       <SmoothCursor />
       <DotGridBackground />
       <header className="topbar shell">
-        <a className="brand" href="#top" aria-label="TraceCard home"><IconMark /><span>Trace<span>Card</span></span></a>
+        <a
+          className="brand"
+          href="#top"
+          onClick={(e) => {
+            e.preventDefault();
+            resetWorkspace();
+            if (typeof window !== "undefined") {
+              if (window.location.hash) {
+                window.history.replaceState(null, "", window.location.pathname);
+              }
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }
+          }}
+          aria-label="TraceCard home"
+        >
+          <IconMark />
+          <span>Trace<span>Card</span></span>
+        </a>
         <nav className="topnav" aria-label="Main navigation"><a href="#workspace">Workspace</a><a href="#how-it-works">How it works</a></nav>
         <div className="top-actions"><button className="history-button" type="button" onClick={() => setDialog("history")}><History size={15} /><span>History</span><b>{history.length}</b></button><button className="theme-button" type="button" aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button><a className="top-cta" href="#workspace">Start debugging <ArrowUpRight size={14} /></a></div>
       </header>

@@ -1,5 +1,5 @@
-import TraceCardApp from "@/components/TraceCardApp";
+import { redirect } from "next/navigation";
 
 export default function WorkspacePage() {
-  return <TraceCardApp />;
+  redirect("/");
 }
